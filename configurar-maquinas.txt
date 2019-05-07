@@ -1,0 +1,50 @@
+Abrir tab terminal:
+ssh cle0206@l040101-ws05.ua.pt
+	ssh cle0206@l040101-ws06.ua.pt
+
+Abrir tab terminal:
+ssh cle0206@l040101-ws06.ua.pt
+	ssh cle0206@l040101-ws05.ua.pt
+
+Na máquina 5:
+cd .ssh
+ll
+	know_hosts
+
+ssh-keygen -t rsa
+
+stfp cle0206@l040101-ws06.ua.pt:.ssh
+	put id05_rsa.pub
+	get id06_rsa.pub
+
+cp /dev/null authorized_keys
+
+cat id06_rsa.pub >> authorized_keys
+
+cat config
+	Host l040101-ws06.ua.pt
+	IdentityFile /home/cle0206/.ssh/id05_rsa
+	PasswordAuthentication no
+
+ssh cle0206@l040101-ws06.ua.pt
+
+Utilizar UDP ports 22700 a 22899
+
+cd ~
+
+vim .bashrc
+	MPIEXEC_PORT_RANGE=22700:22899
+	export MPIEXEC_PORT_RANGE
+
+source .bashrc
+echo $MPIEXEC_PORT_RANGE
+
+mkdir mpi
+mkdir mpi/examples
+
+vim nodefile
+	l040101-ws05.ua.pt
+	l040101-ws06.ua.pt
+
+mpicc -Wall -o [nome ficheiro] [nome ficheiro].c
+mpiexec -f nodefile -n 15 ./[nome ficheiro]
