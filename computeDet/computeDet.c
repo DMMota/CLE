@@ -17,7 +17,7 @@
  *                 -f name --- set the file name (default: "coefData.bin")
  *                 -h      --- print this help.</PRE>
  *
- *  \author AntÃ³nio Rui Borges - February 2019
+ *  \author António Rui Borges - February 2019
  */
 
 #include <stdio.h>
@@ -34,11 +34,11 @@
 #include "dataStruct.h"
 #include "procFile.h"
 
+/** Master default value set to 0 */
+#define MASTER 0
+
 /** \brief print command usage */
 static void printUsage (char *cmdName);
-
-/** \brief dispatcher life cycle routine */
-static void *dispatcher (void *par);
 
 /** \brief determinant computing threads life cycle routine */
 static void *worker (void *par);
@@ -55,116 +55,108 @@ int statusT[K+2];
  *  \param argc number arguments in the command line
  *  \param argv array of pointers to the arguments
  */
+int main (int argc, char *argv[]){
+	char *fName = "coefData.bin";                                                         /* file name, set to default */
 
-int main (int argc, char *argv[])
-{
-  char *fName = "matCoef_128_64.bin";                                                         /* file name, set to default */
+	int totalProcesses, process_id;														/* number of processes and ids */
 
-  /* process command line options */
+	/* process command line options */
 
-  int opt;                                                                                        /* selected option */
+	int opt;                                                                                        /* selected option */
 
-  opterr = 0;
-  do
-  { switch ((opt = getopt (argc, argv, "f:h")))
-    { case 'f': /* file name */
-    	        if ((optarg[0] == '-') || ((optarg[0] == '\0')))
-                { fprintf (stderr, "%s: file name is missing\n", basename (argv[0]));
-                  printUsage (basename (argv[0]));
-                  return EXIT_FAILURE;
-                }
-                fName = optarg;
-                break;
-      case 'h': /* help mode */
-                printUsage (basename (argv[0]));
-                return EXIT_SUCCESS;
-      case '?': /* invalid option */
-                fprintf (stderr, "%s: invalid option\n", basename (argv[0]));
-  	            printUsage (basename (argv[0]));
-                return EXIT_FAILURE;
-      case -1:  break;
-    }
-  } while (opt != -1);
-  if (optind < argc)
-     { fprintf (stderr, "%s: invalid format\n", basename (argv[0]));
-       printUsage (basename (argv[0]));
-       return EXIT_FAILURE;
-     }
+	opterr = 0;
+	do{
+		switch ((opt = getopt (argc, argv, "f:h"))){
+		case 'f': /* file name */
+			if ((optarg[0] == '-') || ((optarg[0] == '\0'))){
+				fprintf (stderr, "%s: file name is missing\n", basename (argv[0]));
+				printUsage (basename (argv[0]));
+				return EXIT_FAILURE;
+			}
+			fName = optarg;
+			break;
+		case 'h': /* help mode */
+			printUsage (basename (argv[0]));
+			return EXIT_SUCCESS;
+		case '?': /* invalid option */
+			fprintf (stderr, "%s: invalid option\n", basename (argv[0]));
+			printUsage (basename (argv[0]));
+			return EXIT_FAILURE;
+		case -1:  break;
+		}
+	} while (opt != -1);
+	if (optind < argc){
+		fprintf (stderr, "%s: invalid format\n", basename (argv[0]));
+		printUsage (basename (argv[0]));
+		return EXIT_FAILURE;
+	}
 
-  pthread_t tIdDispatcher,                                                                   /* dispatcher thread id */
-            tIdWorker[K];                                  /* determinant computing threads internal thread id array */
-  unsigned int dispatcherId,                                             /* dispatcher application defined thread id */
-               workId[K];                       /* determinant computing threads application defined thread id array */
-  int t;                                                                                        /* counting variable */
-  int *status_p;                                                                      /* pointer to execution status */
+	pthread_t tIdDispatcher,                                                                   /* dispatcher thread id */
+	tIdWorker[K];                                  /* determinant computing threads internal thread id array */
+	unsigned int dispatcherId,                                             /* dispatcher application defined thread id */
+	workId[K];                       /* determinant computing threads application defined thread id array */
+	int t;                                                                                        /* counting variable */
+	int *status_p;                                                                      /* pointer to execution status */
 
-  /* initializing text processing threads application defined thread id arrays */
+	/* initializing text processing threads application defined thread id arrays */
 
-  dispatcherId = K;
-  for (t = 0; t < K; t++)
-    workId[t] = t;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &totalProcesses);
+	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);
 
-  /* open the file for reading */
+	/* Create Data type for structure MATRIXINFO to send and receive with MPI */
+	int nitems=4;
+	int blocklengths[4] = {1,1,1,1};
 
-  double t0, t1;                                                                                      /* time limits */
+	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
+	MPI_Aint offsets[4];
 
-  t0 = ((double) clock ()) / CLOCKS_PER_SEC;
-  openFile (fName);
+	offsets[0] = offsetof(MESH,n);														/* setof identification */
+	offsets[1] = offsetof(MESH,order);												    /* setof order */
+	offsets[2] = offsetof(MESH,*mat);												    /* setof pointer to the storage area of matrix coefficients */
+	offsets[3] = offsetof(MESH,detValue);											    /* setof value of the determinant */
 
-  /* generation of the dispatcher and determinant computing threads */
+	MPI_Datatype MPI_MATRIXINFO;
+	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
+	MPI_Type_commit(&MPI_MATRIXINFO);
 
-  if (pthread_create (&tIdDispatcher, NULL, dispatcher, &dispatcherId) != 0)                    /* dispatcher thread */
-     { perror ("error on creating determinant computing thread");
-       exit (EXIT_FAILURE);
-     }
-  for (t = 0; t < K; t++)
-    if (pthread_create (&tIdWorker[t], NULL, worker, &workId[t]) != 0)               /* determinant computing thread */
-       { perror ("error on creating determinant computing thread");
-         exit (EXIT_FAILURE);
-       }
+	dispatcherId = K;
+	for (t = 0; t < K; t++)
+		workId[t] = t;
 
-  /* waiting for the termination of the dispatcher and determinant computing thread */
+	double t0, t1;                                                                                      /* time limits */
+	t0 = ((double) clock ()) / CLOCKS_PER_SEC;
 
-  printf ("\nFinal report\n");
-  if (pthread_join (tIdDispatcher, (void *) &status_p) != 0)                                    /* dispatcher thread */
-     { perror ("error on waiting for dispatcher thread to terminate");
-       exit (EXIT_FAILURE);
-     }
-  printf ("dispatcher thread has terminated: ");
-  printf ("its status was %d\n", *status_p);
-  for (t = 0; t < K; t++)
-  { if (pthread_join (tIdWorker[t], (void *) &status_p) != 0)                        /* determinant computing thread */
-       { perror ("error on waiting for determinant computing thread to terminate");
-         exit (EXIT_FAILURE);
-       }
-    printf ("determinant computing thread, with id %u, has terminated: ", t);
-    printf ("its status was %d\n", *status_p);
-  }
-  t1 = ((double) clock ()) / CLOCKS_PER_SEC;
+	if(process_id == MASTER) {
+		/* open the file for reading */
+		openFile (fName);
+		readMatrixCoef ();
 
-  /* close file and print the values of the determinants */
 
-  closeFileAndPrintDetValues ();
-  printf ("\nElapsed time = %.6f s\n", t1 - t0);
+	}else{
 
-  exit (EXIT_SUCCESS);
-}
+	}
 
-/**
- *  \brief Function dispatcher thread.
- *
- *  It reads in succession the coefficients of square matrices into data buffers for subsequent processing.
- *  Its role is to simulate the life cycle of the dispatcher.
- *
- *  \param par dummy parameter
- */
 
-static void *dispatcher (void *par)
-{
-  readMatrixCoef ();
 
-  statusT[K] = EXIT_SUCCESS;
-  pthread_exit (&statusT[K]);
+
+
+
+	for (t = 0; t < K; t++)
+
+		/* waiting for the termination of the dispatcher and determinant computing thread */
+		//MPI_Barrier(MPI_COMM_WORLD);
+
+		t1 = ((double) clock ()) / CLOCKS_PER_SEC;
+
+	/* close file and print the values of the determinants */
+	printf ("\nFinal report\n");
+	closeFileAndPrintDetValues ();
+	printf ("\nElapsed time = %.6f s\n", t1 - t0);
+
+	MPI_Type_free(&MPI_MESH);
+	MPI_Finalize();
+	return 0;
 }
 
 /**
@@ -176,68 +168,62 @@ static void *dispatcher (void *par)
  *
  *  \param par pointer to application defined worker identification
  */
+static void *worker (void *par){
+	unsigned int id = *((unsigned int *) par);                                                            /* worker id */
+	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
+	int k, m, r;                                                                                 /* counting variables */
+	double tmp;                                                                                     /* temporary value */
+	bool found;                                                                             /* non-null value is found */
 
-static void *worker (void *par)
-{
-  unsigned int id = *((unsigned int *) par);                                                            /* worker id */
-  MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-  int k, m, r;                                                                                 /* counting variables */
-  double tmp;                                                                                     /* temporary value */
-  bool found;                                                                             /* non-null value is found */
+	/* fetch a data buffer */
 
-  /* fetch a data buffer */
+	while (getMatrixCoef (id, &buf)){
+		found = false;
 
-  while (getMatrixCoef (id, &buf))
-  { found = false;
+		/* apply Gaussian elimination procedure */
 
-    /* apply Gaussian elimination procedure */
+		buf->detValue = 1.0;
+		for (k = 0; k < buf->order - 1; k++){ /* check if pivot element is null */
+			if (fabs (*(buf->mat + k * buf->order + k)) < 1.0e-20){ /* try and get a non-null element */
+				found = false;
+				for (m = k + 1; m < buf->order; m++)
+					if (fabs (*(buf->mat + k * buf->order + m)) >= 1.0e-20){ /* swap columns */
+						for (r = 0; r < buf->order; r++){
+							tmp = *(buf->mat + r * buf->order + k);
+							*(buf->mat + r * buf->order + k) = *(buf->mat + r * buf->order + m);
+							*(buf->mat + r * buf->order + m) = tmp;
+						}
+						buf->detValue = -buf->detValue;                           /* reverse the signal of the determinant */
+						found = true;
+						break;
+					}
+			}
+			else found = true;
+			if (!found){ /* null row */
+				break;
+			}
+			/* apply row transformation */
+			for (m = k + 1; m < buf->order; m++){
+				tmp = *(buf->mat + m * buf->order + k) / *(buf->mat + k * buf->order + k);
+				for (r = k; r < buf->order; r++)
+					*(buf->mat + m * buf->order + r) -= tmp * *(buf->mat + k * buf->order + r);
+			}
+		}
 
-    buf->detValue = 1.0;
-    for (k = 0; k < buf->order - 1; k++)
-    { /* check if pivot element is null */
-      if (fabs (*(buf->mat + k * buf->order + k)) < 1.0e-20)
-         { /* try and get a non-null element */
-           found = false;
-    	   for (m = k + 1; m < buf->order; m++)
-             if (fabs (*(buf->mat + k * buf->order + m)) >= 1.0e-20)
-    	        { /* swap columns */
-                  for (r = 0; r < buf->order; r++)
-                  { tmp = *(buf->mat + r * buf->order + k);
-                    *(buf->mat + r * buf->order + k) = *(buf->mat + r * buf->order + m);
-                    *(buf->mat + r * buf->order + m) = tmp;
-                  }
-                  buf->detValue = -buf->detValue;                           /* reverse the signal of the determinant */
-                  found = true;
-                  break;
-    	        }
-         }
-         else found = true;
-      if (!found)
-         { /* null row */
-           break;
-         }
-      /* apply row transformation */
-      for (m = k + 1; m < buf->order; m++)
-      { tmp = *(buf->mat + m * buf->order + k) / *(buf->mat + k * buf->order + k);
-        for (r = k; r < buf->order; r++)
-          *(buf->mat + m * buf->order + r) -= tmp * *(buf->mat + k * buf->order + r);
-      }
-    }
+		/* compute the determinant */
 
-    /* compute the determinant */
+		if (found)
+			for (k = 0; k < buf->order; k++)
+				buf->detValue *= *(buf->mat + k * buf->order + k);
+		else buf->detValue = 0.0;
 
-    if (found)
-       for (k = 0; k < buf->order; k++)
-         buf->detValue *= *(buf->mat + k * buf->order + k);
-       else buf->detValue = 0.0;
+		/* return computed value */
 
-    /* return computed value */
+		returnDetValue (id, buf);
+	}
 
-    returnDetValue (id, buf);
-  }
-
-  statusT[id] = EXIT_SUCCESS;
-  pthread_exit (&statusT[id]);
+	statusT[id] = EXIT_SUCCESS;
+	pthread_exit (&statusT[id]);
 }
 
 /**
@@ -247,11 +233,9 @@ static void *worker (void *par)
  *
  *  \param cmdName string with the name of the command
  */
-
-static void printUsage (char *cmdName)
-{
-  fprintf (stderr, "\nSynopsis: %s [OPTIONS]\n"
-           "  OPTIONS:\n"
-           "  -f name --- set the file name (default: \"coefData.bin\")\n"
-           "  -h      --- print this help\n", cmdName);
+static void printUsage (char *cmdName){
+	fprintf (stderr, "\nSynopsis: %s [OPTIONS]\n"
+			"  OPTIONS:\n"
+			"  -f name --- set the file name (default: \"coefData.bin\")\n"
+			"  -h      --- print this help\n", cmdName);
 }
