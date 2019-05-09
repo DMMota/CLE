@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <string.h>
 
+#include <mpi.h>
 #include "probConst.h"
 #include "dataStruct.h"
 
@@ -78,7 +79,7 @@ unsigned int riNoDataBuff;
 bool emptyNoDataBuff;
 
 /** \brief number of determinant computing threads waiting for a data buffer with data */
-static unsigned int nBlockThreads;
+static unsigned int nBlocks;
 
 /** \brief flag signaling end of processing */
 static bool end;
@@ -106,7 +107,6 @@ int dataBuffEmpty;
  *
  *  Internal monitor operation.
  */
-
 static void initialization (void){
 	int i;                                                                                        /* counting variable */
 
@@ -123,7 +123,7 @@ static void initialization (void){
 	iiNoDataBuff = riNoDataBuff = 0;            /* insertion and retrieval pointers of the FIFO of pointers to buffers
                                                                                   with no data set to the same value */
 	emptyNoDataBuff = false;                                  /* FIFO of pointers to buffers with no data is not empty */
-	nBlockThreads = 0;                                       /* no determinant computing threads are presently blocked */
+	nBlocks = 0;                                       /* no determinant computing threads are presently blocked */
 	end = false;                                                                  /* processing has not terminated yet */
 
 	MPI_Send(&noDataBuffEmpty, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -221,7 +221,6 @@ void readMatrixCoef (void){
 		emptyNoDataBuff = (iiNoDataBuff == riNoDataBuff);
 
 		/* initialize and read matrix coefficients into the data buffer */
-
 		buf->n = n;
 		if (fread (buf->mat, sizeof (double), order * order, f) != (order * order)){
 			fprintf (stderr, "error on reading matrix coefficients in iteration %d\n", n);
@@ -230,13 +229,11 @@ void readMatrixCoef (void){
 		}
 
 		/* insert the pointer to the buffer into the FIFO of pointers to buffers with data */
-
 		dataBuff[iiDataBuff] = buf;
 		iiDataBuff = (iiDataBuff + 1) % N;
 		emptyDataBuff = false;
 
 		/* let a determinant computing thread know a buffer with data is available */
-
 		if ((statusT[K] = pthread_cond_signal (&dataBuffEmpty)) != 0){
 			errno = statusT[K];                                                                  /* save error in errno */
 			perror ("error on signaling for a buffer with data");
@@ -246,7 +243,6 @@ void readMatrixCoef (void){
 	}
 
 	/* signal end of processing */
-
 	end = true;
 
 	if ((statusT[K] = pthread_mutex_unlock (&accessCR)) != 0){ 									/* exit monitor */
@@ -262,40 +258,40 @@ void readMatrixCoef (void){
  *
  *  Operation carried out by the main thread.
  */
-
 void closeFileAndPrintDetValues (void){
 	int i, n;                                                                                     /* counting variable */
 
-	if ((statusT[K+1] = pthread_mutex_lock (&accessCR)) != 0)                                         /* enter monitor */
-	{ errno = statusT[K+1];                                                                  /* save error in errno */
-	perror ("error on entering monitor(CF)");
-	statusT[K+1] = EXIT_FAILURE;
-	pthread_exit (&statusT[K+1]);
+	if ((statusT[K+1] = pthread_mutex_lock (&accessCR)) != 0){                                         /* enter monitor */
+		errno = statusT[K+1];                                                                  /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
 	}
 	pthread_once (&init, initialization);                                              /* internal data initialization */
 
 	nEntries[K+1] += 1;
+
 	if (fclose (f) == EOF)
-	{ perror ("error on closing file");
-	statusT[K+1] = EXIT_FAILURE;
-	pthread_exit (&statusT[K+1]);
-	}
+		perror ("error on closing file");
 	printf ("\n");
+
 	for (n = 0; n < nMat; n++)
 		printf ("The determinant of matrix %d is %.3e\n", n, det[n]);
 	printf ("\n");
+
 	for (i = 0; i < K; i++)
 		printf ("N. ent. thread %u ", i);
 	printf ("  Dispatcher       Main thread\n");
+
 	for (i = 0; i < K + 2; i++)
 		printf ("%8u         ", nEntries[i]);
 	printf ("\n");
 
-	if ((statusT[K+1] = pthread_mutex_unlock (&accessCR)) != 0)                                        /* exit monitor */
-	{ errno = statusT[K+1];                                                                  /* save error in errno */
-	perror ("error on exiting monitor(CF)");
-	statusT[K+1] = EXIT_FAILURE;
-	pthread_exit (&statusT[K+1]);
+	if ((statusT[K+1] = pthread_mutex_unlock (&accessCR)) != 0){                                        /* exit monitor */
+		errno = statusT[K+1];                                                                  /* save error in errno */
+		perror ("error on exiting monitor(CF)");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
 	}
 }
 
@@ -314,11 +310,11 @@ void closeFileAndPrintDetValues (void){
 bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
 
-	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0)                                          /* enter monitor */
-	{ errno = statusT[id];                                                                   /* save error in errno */
-	perror ("error on entering monitor(CF)");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
+	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0){                                          /* enter monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
 	}
 	pthread_once (&init, initialization);                                              /* internal data initialization */
 
@@ -326,46 +322,45 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 
 	/* check for end of processing */
 
-	if (emptyDataBuff && end)
-	{ /* let possible determinant computing threads know the processing is terminated */
-		while (nBlockThreads > 0)
-		{ if ((statusT[id] = pthread_cond_signal (&dataBuffEmpty)) != 0)
-		{ errno = statusT[id];                                                            /* save error in errno */
-		perror ("error on signaling for a buffer with data");
-		statusT[id] = EXIT_FAILURE;
-		pthread_exit (&statusT[id]);
+	if (emptyDataBuff && end){											 /* let possible determinant computing threads know the processing is terminated */
+		while (nBlocks > 0){
+			if ((statusT[id] = pthread_cond_signal (&dataBuffEmpty)) != 0){
+				errno = statusT[id];                                                            /* save error in errno */
+				perror ("error on signaling for a buffer with data");
+				statusT[id] = EXIT_FAILURE;
+				pthread_exit (&statusT[id]);
+			}
+			nBlocks -= 1;
 		}
-		nBlockThreads -= 1;
-		}
-		if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0)                                    /* exit monitor */
-		{ errno = statusT[id];                                                              /* save error in errno */
-		perror ("error on exiting monitor(CF)");
-		statusT[id] = EXIT_FAILURE;
-		pthread_exit (&statusT[id]);
+		if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0){                                    /* exit monitor */
+			errno = statusT[id];                                                              /* save error in errno */
+			perror ("error on exiting monitor(CF)");
+			statusT[id] = EXIT_FAILURE;
+			pthread_exit (&statusT[id]);
 		}
 		return false;
 	}
 
 	/* wait for a data buffer with data to become available */
 
-	while (emptyDataBuff)
-	{ nBlockThreads += 1;
-	if ((statusT[id] = pthread_cond_wait (&dataBuffEmpty, &accessCR)) != 0)
-	{ errno = statusT[id];                                                                 /* save error in errno */
-	perror ("error on waiting for a data buffer with data");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
-	}
-	if (emptyDataBuff && end)
-	{ if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0)                                  /* exit monitor */
-	{ errno = statusT[id];                                                            /* save error in errno */
-	perror ("error on exiting monitor(CF)");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
-	}
-	return false;
-	}
-	else nBlockThreads -= 1;
+	while (emptyDataBuff){
+		nBlocks += 1;
+		if ((statusT[id] = pthread_cond_wait (&dataBuffEmpty, &accessCR)) != 0){
+			errno = statusT[id];                                                                 /* save error in errno */
+			perror ("error on waiting for a data buffer with data");
+			statusT[id] = EXIT_FAILURE;
+			pthread_exit (&statusT[id]);
+		}
+		if (emptyDataBuff && end){
+			if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0){                                  /* exit monitor */
+				errno = statusT[id];                                                            /* save error in errno */
+				perror ("error on exiting monitor(CF)");
+				statusT[id] = EXIT_FAILURE;
+				pthread_exit (&statusT[id]);
+			}
+			return false;
+		}
+		else nBlocks -= 1;
 	}
 
 	/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with data */
@@ -375,11 +370,11 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	emptyDataBuff = (iiDataBuff == riDataBuff);
 	*bufPnt = buf;
 
-	if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0)                                         /* exit monitor */
-	{ errno = statusT[id];                                                                   /* save error in errno */
-	perror ("error on exiting monitor(CF)");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
+	if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0){                                         /* exit monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on exiting monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
 	}
 
 	return true;
@@ -393,14 +388,13 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
  *  \param id determinant computing thread id
  *  \param buf pointer to matrix buffer
  */
-
 void returnDetValue (unsigned int id, MATRIXINFO *buf)
 {
-	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0)                                          /* enter monitor */
-	{ errno = statusT[id];                                                                   /* save error in errno */
-	perror ("error on entering monitor(CF)");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
+	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0){                                         /* enter monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
 	}
 	pthread_once (&init, initialization);                                              /* internal data initialization */
 
@@ -418,17 +412,17 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf)
 
 	/* let the dispatcher know a buffer with no data is available */
 
-	if ((statusT[id] = pthread_cond_signal (&noDataBuffEmpty)) != 0)
-	{ errno = statusT[id];                                                                   /* save error in errno */
-	perror ("error on signaling for a buffer with data");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
+	if ((statusT[id] = pthread_cond_signal (&noDataBuffEmpty)) != 0){
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on signaling for a buffer with data");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
 	}
 
-	if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0)                                         /* exit monitor */
-	{ errno = statusT[id];                                                                   /* save error in errno */
-	perror ("error on exiting monitor(CF)");
-	statusT[id] = EXIT_FAILURE;
-	pthread_exit (&statusT[id]);
+	if ((statusT[id] = pthread_mutex_unlock (&accessCR)) != 0){                                         /* exit monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on exiting monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
 	}
 }

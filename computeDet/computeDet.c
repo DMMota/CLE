@@ -30,6 +30,7 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include <mpi.h>
 #include "probConst.h"
 #include "dataStruct.h"
 #include "procFile.h"
@@ -91,40 +92,29 @@ int main (int argc, char *argv[]){
 		return EXIT_FAILURE;
 	}
 
-	pthread_t tIdDispatcher,                                                                   /* dispatcher thread id */
-	tIdWorker[K];                                  /* determinant computing threads internal thread id array */
-	unsigned int dispatcherId,                                             /* dispatcher application defined thread id */
-	workId[K];                       /* determinant computing threads application defined thread id array */
-	int t;                                                                                        /* counting variable */
-	int *status_p;                                                                      /* pointer to execution status */
-
-	/* initializing text processing threads application defined thread id arrays */
+	/* Initializing text processing threads application defined thread id arrays */
 
 	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &totalProcesses);
-	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);
+	MPI_Comm_size(MPI_COMM_WORLD, &totalProcesses);									/* MPI size com numero total de processos */
+	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);										/* MPI rank com id do processo */
 
 	/* Create Data type for structure MATRIXINFO to send and receive with MPI */
-	int nitems=4;
+	int nitems = 4;
 	int blocklengths[4] = {1,1,1,1};
 
 	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
 	MPI_Aint offsets[4];
 
-	offsets[0] = offsetof(MESH,n);														/* setof identification */
-	offsets[1] = offsetof(MESH,order);												    /* setof order */
-	offsets[2] = offsetof(MESH,*mat);												    /* setof pointer to the storage area of matrix coefficients */
-	offsets[3] = offsetof(MESH,detValue);											    /* setof value of the determinant */
+	offsets[0] = offsetof(MATRIXINFO, n);														/* setof identification */
+	offsets[1] = offsetof(MATRIXINFO, order);												    /* setof order */
+	offsets[2] = offsetof(MATRIXINFO, *mat);												    /* setof pointer to the storage area of matrix coefficients */
+	offsets[3] = offsetof(MATRIXINFO, detValue);											    /* setof value of the determinant */
 
 	MPI_Datatype MPI_MATRIXINFO;
 	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
 	MPI_Type_commit(&MPI_MATRIXINFO);
 
-	dispatcherId = K;
-	for (t = 0; t < K; t++)
-		workId[t] = t;
-
-	double t0, t1;                                                                                      /* time limits */
+	double t0, t1;                                                                                     /* time limits */
 	t0 = ((double) clock ()) / CLOCKS_PER_SEC;
 
 	if(process_id == MASTER) {
@@ -132,29 +122,41 @@ int main (int argc, char *argv[]){
 		openFile (fName);
 		readMatrixCoef ();
 
+		int amountPerProcess = nMat / numWorkers;
 
-	}else{
+		for(int i = 0; i < numWorkers; i++){
+			if(i == MASTER){
+				worker(*mat);
+				MPI_BARRIER(MPI_COMM_WORLD);
 
+				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+			}
+			else{
+				//MPI_Send(&, amountPerProcess, MPI_INT, i, 0, MPI_COMM_WORLD);
+				//MPI_Send(&mat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+			}
+		}
+	} else if(process_id > MASTER) {
+		MPI_Status status;
+		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+		worker(*mat);
+		MPI_BARRIER(MPI_COMM_WORLD)
+		//MPI_Send(&mat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 	}
 
+	/* waiting for the termination of the dispatcher and determinant computing thread */
+	//MPI_Barrier(MPI_COMM_WORLD);
 
-
-
-
-
-	for (t = 0; t < K; t++)
-
-		/* waiting for the termination of the dispatcher and determinant computing thread */
-		//MPI_Barrier(MPI_COMM_WORLD);
-
-		t1 = ((double) clock ()) / CLOCKS_PER_SEC;
+	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
 
 	/* close file and print the values of the determinants */
 	printf ("\nFinal report\n");
 	closeFileAndPrintDetValues ();
 	printf ("\nElapsed time = %.6f s\n", t1 - t0);
 
-	MPI_Type_free(&MPI_MESH);
+	MPI_Type_free(&MPI_MATRIXINFO);
 	MPI_Finalize();
 	return 0;
 }
@@ -221,9 +223,6 @@ static void *worker (void *par){
 
 		returnDetValue (id, buf);
 	}
-
-	statusT[id] = EXIT_SUCCESS;
-	pthread_exit (&statusT[id]);
 }
 
 /**
