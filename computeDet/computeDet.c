@@ -120,34 +120,32 @@ int main (int argc, char *argv[]){
 	if(process_id == MASTER) {
 		/* open the file for reading */
 		openFile (fName);
-		readMatrixCoef ();
+		readMatrixCoef();
 
-		int amountPerProcess = nMat / numWorkers;
+		int amountPerProcess = nMat / totalProcesses;
 
-		for(int i = 0; i < numWorkers; i++){
+		for(int i = 0; i < totalProcesses; i++){
 			if(i == MASTER){
 				worker(*mat);
 				MPI_BARRIER(MPI_COMM_WORLD);
 
 				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				MPI_Recv(&info, nMat, MPI_INT, i, 0, MPI_COMM_WORLD);
 			}
 			else{
 				//MPI_Send(&, amountPerProcess, MPI_INT, i, 0, MPI_COMM_WORLD);
-				//MPI_Send(&mat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
 		MPI_Status status;
 		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
-		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+		MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+
 		worker(*mat);
 		MPI_BARRIER(MPI_COMM_WORLD)
-		//MPI_Send(&mat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+		MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 	}
-
-	/* waiting for the termination of the dispatcher and determinant computing thread */
-	//MPI_Barrier(MPI_COMM_WORLD);
 
 	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
 
@@ -179,7 +177,7 @@ static void *worker (void *par){
 
 	/* fetch a data buffer */
 
-	while (getMatrixCoef (id, &buf)){
+	while (getMatrixCoef(id, &buf)){
 		found = false;
 
 		/* apply Gaussian elimination procedure */
