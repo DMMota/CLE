@@ -1,3 +1,5 @@
+https://stackoverflow.com/questions/41411019/what-is-the-advantage-if-any-of-mpi-threads-parallelization-vs-mpi-only
+
 Abrir tab terminal:
 ssh cle0206@l040101-ws05.ua.pt
 	ssh cle0206@l040101-ws06.ua.pt
@@ -6,7 +8,7 @@ Abrir tab terminal:
 ssh cle0206@l040101-ws06.ua.pt
 	ssh cle0206@l040101-ws05.ua.pt
 
-Na máquina 5:
+Na mï¿½quina 5:
 cd .ssh
 ll
 	know_hosts

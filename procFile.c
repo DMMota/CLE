@@ -120,8 +120,10 @@ static void initialization (void){
 	nBlocks = 0;                                       /* no determinant computing threads are presently blocked */
 	end = false;                                                                  /* processing has not terminated yet */
 
-	MPI_Send(&noDataBuffEmpty, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-	MPI_Send(&dataBuffEmpty, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+	pthread_cond_init (&noDataBuffEmpty, NULL);                         /* initialize dispatcher synchronization point */
+	pthread_cond_init (&dataBuffEmpty, NULL); 							/* initialize determinant computing threads synchronization point */
+	//MPI_Send(&noDataBuffEmpty, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+	//MPI_Send(&dataBuffEmpty, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 }
 
 /**
@@ -133,30 +135,63 @@ static void initialization (void){
  */
 void openFile (char fName[]){
 	int i;                                                                                        /* counting variable */
-	initialization();
+
+	if ((statusT[K+1] = pthread_mutex_lock (&accessCR)) != 0){                                        /* enter monitor */
+		errno = statusT[K+1];                                                                  /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
+	pthread_once (&init, initialization);                                              /* internal data initialization */
+
 	nEntries[K+1] += 1;
 
-	if (strlen (fName) > M)
+	if (strlen (fName) > M){
 		fprintf (stderr, "file name too long");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K]);
+	}
 
-	if ((f = fopen (fName, "r")) == NULL)
+	if ((f = fopen (fName, "r")) == NULL){
 		perror ("error on file opening for reading");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 
-	if (fread (&nMat, sizeof (nMat), 1, f) != 1)
+	if (fread (&nMat, sizeof (nMat), 1, f) != 1){
 		fprintf (stderr, "%s\n", "error on reading header - number of stored matrices\n");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 
-	if (fread (&order, sizeof (order), 1, f) != 1)
+	if (fread (&order, sizeof (order), 1, f) != 1){
 		fprintf (stderr, "%s\n", "error on reading header - order of stored matrices\n");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 
-	if ((mat = malloc (N * sizeof (double) * order * order)) == NULL)
+	if ((mat = malloc (N * sizeof (double) * order * order)) == NULL){
 		fprintf (stderr, "%s\n", "error on allocating storage area for matrices coefficients\n");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 
-	if ((det = malloc (nMat * sizeof (double))) == NULL)
+	if ((det = malloc (nMat * sizeof (double))) == NULL){
 		fprintf (stderr, "%s\n", "error on allocating storage area for determinant values\n");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 
 	for (i = 0; i < N; i++){
 		info[i].order = order;
 		info[i].mat = mat + i * order * order;
+	}
+
+	if ((statusT[K+1] = pthread_mutex_unlock (&accessCR)) != 0){                                       /* exit monitor */
+		errno = statusT[K+1];                                                                  /* save error in errno */
+		perror ("error on exiting monitor(CF)");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
 	}
 }
 
@@ -169,7 +204,15 @@ void openFile (char fName[]){
 void readMatrixCoef (void){
 	int n;                                                                                        /* counting variable */
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-	initialization();
+
+	if ((statusT[K] = pthread_mutex_lock (&accessCR)) != 0){                                           /* enter monitor */
+		errno = statusT[K];                                                                    /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[K] = EXIT_FAILURE;
+		pthread_exit (&statusT[K]);
+	}
+	pthread_once (&init, initialization);
+
 	nEntries[K] += 1;
 
 	for (n = 0; n < nMat; n++){
@@ -230,11 +273,22 @@ void readMatrixCoef (void){
  */
 void closeFileAndPrintDetValues (void){
 	int i, n;                                                                                     /* counting variable */
-	initialization();
+
+	if ((statusT[K+1] = pthread_mutex_lock (&accessCR)) != 0){                                         /* enter monitor */
+		errno = statusT[K+1];                                                                  /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
+	pthread_once (&init, initialization);
+
 	nEntries[K+1] += 1;
 
-	if (fclose (f) == EOF)
+	if (fclose (f) == EOF){
 		perror ("error on closing file");
+		statusT[K+1] = EXIT_FAILURE;
+		pthread_exit (&statusT[K+1]);
+	}
 	printf ("\n");
 
 	for (n = 0; n < nMat; n++)
@@ -248,6 +302,13 @@ void closeFileAndPrintDetValues (void){
 	for (i = 0; i < K + 2; i++)
 		printf ("%8u         ", nEntries[i]);
 	printf ("\n");
+
+	if ((statusT[K+1] = pthread_mutex_unlock (&accessCR)) != 0)                                        /* exit monitor */
+	{ errno = statusT[K+1];                                                                  /* save error in errno */
+	perror ("error on exiting monitor(CF)");
+	statusT[K+1] = EXIT_FAILURE;
+	pthread_exit (&statusT[K+1]);
+	}
 }
 
 /**
@@ -264,7 +325,15 @@ void closeFileAndPrintDetValues (void){
  */
 bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-	initialization();
+
+	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0){                                          /* enter monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
+	}
+	pthread_once (&init, initialization);
+
 	nEntries[id] += 1;
 
 	/* check for end of processing */
@@ -336,7 +405,14 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
  *  \param buf pointer to matrix buffer
  */
 void returnDetValue (unsigned int id, MATRIXINFO *buf){
-	initialization();
+	if ((statusT[id] = pthread_mutex_lock (&accessCR)) != 0){                                          /* enter monitor */
+		errno = statusT[id];                                                                   /* save error in errno */
+		perror ("error on entering monitor(CF)");
+		statusT[id] = EXIT_FAILURE;
+		pthread_exit (&statusT[id]);
+	}
+	pthread_once (&init, initialization);
+
 	nEntries[id] += 1;
 
 	/* store the value of the determinant */

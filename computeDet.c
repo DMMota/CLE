@@ -17,7 +17,7 @@
  *                 -f name --- set the file name (default: "coefData.bin")
  *                 -h      --- print this help.</PRE>
  *
- *  \author António Rui Borges - February 2019
+ *  \author Antï¿½nio Rui Borges - February 2019
  */
 
 #include <stdio.h>
