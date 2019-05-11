@@ -163,7 +163,7 @@ int main (int argc, char *argv[]){
 	int amountPerProcess;
 
 	if(process_id == MASTER) {
-
+		printf ("Entrei processo master.\n");
 		/* open the file for reading */
 		openFile (fName);
 		readMatrixCoef();
@@ -184,6 +184,7 @@ int main (int argc, char *argv[]){
 			}
 		}
 	} else if(process_id > MASTER) {
+		printf ("Entrei processo worker.\n");
 		MPI_Status status;
 		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
 		MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
@@ -293,7 +294,7 @@ static void initialization (void){
 	nBlocks = 0;                                       /* no determinant computing threads are presently blocked */
 	end = false;                                                                  /* processing has not terminated yet */
 
-	MPI_T_init_thread(MPI_THREAD_SERIALIZED, MPI_THREAD_SERIALIZED);
+	//MPI_T_init_thread(MPI_THREAD_SERIALIZED, MPI_THREAD_SERIALIZED);
 }
 
 /**
@@ -304,6 +305,8 @@ static void initialization (void){
  *  \param fName file name
  */
 void openFile (char fName[]){
+	printf ("Opening File...\n");
+
 	int i;                                                                                        /* counting variable */
 	initialization();
 	nEntries[K+1] += 1;
@@ -317,14 +320,11 @@ void openFile (char fName[]){
 	if (fread (&nMat, sizeof (nMat), 1, f) != 1)
 		fprintf (stderr, "%s\n", "error on reading header - number of stored matrices\n");
 
-
 	if (fread (&order, sizeof (order), 1, f) != 1)
 		fprintf (stderr, "%s\n", "error on reading header - order of stored matrices\n");
 
-
 	if ((mat = malloc (N * sizeof (double) * order * order)) == NULL)
 		fprintf (stderr, "%s\n", "error on allocating storage area for matrices coefficients\n");
-
 
 	if ((det = malloc (nMat * sizeof (double))) == NULL)
 		fprintf (stderr, "%s\n", "error on allocating storage area for determinant values\n");
@@ -334,7 +334,7 @@ void openFile (char fName[]){
 		info[i].mat = mat + i * order * order;
 	}
 
-	MPI_T_finalize();
+	//MPI_T_finalize();
 }
 
 /**
@@ -344,6 +344,8 @@ void openFile (char fName[]){
  *  The dispatcher is blocked if there are no empty data buffers.
  */
 void readMatrixCoef (void){
+	printf ("Reading Matrix Coef...\n");
+
 	int n;                                                                                        /* counting variable */
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
 	initialization();
@@ -370,7 +372,7 @@ void readMatrixCoef (void){
 	/* signal end of processing */
 	end = true;
 
-	MPI_T_finalize();
+	//MPI_T_finalize();
 }
 
 /**
@@ -379,6 +381,8 @@ void readMatrixCoef (void){
  *  Operation carried out by the main thread.
  */
 void closeFileAndPrintDetValues (void){
+	printf ("Closing and Printing values...\n");
+
 	int i, n;                                                                                     /* counting variable */
 	initialization();
 	nEntries[K+1] += 1;
@@ -399,7 +403,7 @@ void closeFileAndPrintDetValues (void){
 		printf ("%8u         ", nEntries[i]);
 	printf ("\n");
 
-	MPI_T_finalize();
+	//MPI_T_finalize();
 }
 
 /**
@@ -415,6 +419,8 @@ void closeFileAndPrintDetValues (void){
  *          false, if there are no more matrices whose determinant has to be computed
  */
 bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
+	printf ("Getting Matrix Coef...\n");
+
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
 	initialization();
 	nEntries[id] += 1;
@@ -442,7 +448,7 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	emptyDataBuff = (iiDataBuff == riDataBuff);
 	*bufPnt = buf;
 
-	MPI_T_finalize();
+	//MPI_T_finalize();
 	return true;
 }
 
@@ -455,6 +461,8 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
  *  \param buf pointer to matrix buffer
  */
 void returnDetValue (unsigned int id, MATRIXINFO *buf){
+	printf ("Returning det value...\n");
+
 	initialization();
 	nEntries[id] += 1;
 
@@ -466,7 +474,7 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf){
 	iiNoDataBuff = (iiNoDataBuff + 1) % N;
 	emptyNoDataBuff = false;
 
-	MPI_T_finalize();
+	//MPI_T_finalize();
 }
 
 /**
