@@ -28,30 +28,11 @@
 #include <math.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
+#include <string.h>
 
 #include <mpi.h>
-#include "probConst.h"
-#include "procFile.h"
-#include "computeDet.h"
-#include "dataStruct.h"
-
-/** \brief master default value set to 0 */
-#define MASTER 0
-
-/** \brief number of buffers to store matrix coefficients */
-#define N 8
-
-/** \brief number of determinant computing threads */
-#define K 4
-
-/** \brief maximum number of characters in file name */
-#define M 48
-
-/** \brief print command usage */
-static void printUsage (char *cmdName);
-
-/** \brief determinant computing threads life cycle routine */
-static void *worker (int process_id);
+#include "determinante.h"
 
 /** \brief number of square matrices whose determinant is to be computed */
 static int nMat;
@@ -67,6 +48,9 @@ static double *det;
 
 /** \brief array of buffers to store matrix coefficients */
 static MATRIXINFO info[N];
+
+/** \brief matrix struct */
+static MATRIXINFO matInfo;
 
 /** \brief storage area for the FIFO of pointers to buffers with data */
 MATRIXINFO *dataBuff[N];
@@ -109,14 +93,6 @@ int noDataBuffEmpty;
 
 /** \brief determinant computing threads synchronization point when all data buffers are empty */
 int dataBuffEmpty;
-
-/** \brief matrix struct */
-typedef struct
-        { unsigned int n;                                                            /* identification of the matrix */
-          unsigned int order;                                                                 /* order of the matrix */
-          double *mat;                                         /* pointer to the storage area of matrix coefficients */
-          double detValue;                                                               /* value of the determinant */
-        } MATRIXINFO;
 
 /**
  *  \brief Main thread.
@@ -173,28 +149,23 @@ int main (int argc, char *argv[]){
 
 	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
 	MPI_Aint offsets[4];
-
-	MATRIXINFO *mInfo;
-	offsets[0] = offsetof(MATRIXINFO, n);														/* setof identification */
-	offsets[1] = offsetof(MATRIXINFO, order);												    /* setof order */
-	offsets[2] = offsetof(MATRIXINFO, mat);												    /* setof pointer to the storage area of matrix coefficients */
-	offsets[3] = offsetof(MATRIXINFO, detValue);											    /* setof value of the determinant */
-
+	offsets[0] = offsetof(matInfo, matInfo.n);														/* setof identification */
+	offsets[1] = offsetof(matInfo, matInfo.order);												    /* setof order */
+	offsets[2] = offsetof(matInfo, matInfo.mat);												    /* setof pointer to the storage area of matrix coefficients */
+	offsets[3] = offsetof(matInfo, matInfo.detValue);											    /* setof value of the determinant */
 	MPI_Datatype MPI_MATRIXINFO;
 	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
 	MPI_Type_commit(&MPI_MATRIXINFO);
 
 	double t0, t1;                                                                                     /* time limits */
 	t0 = ((double) clock ()) / CLOCKS_PER_SEC;
-	MATRIXINFO infoMatr;
-	int nMat;
 	int amountPerProcess;
 
 	if(process_id == MASTER) {
 
 		/* open the file for reading */
-		infoMatr = openFile (fName);
-		nMat = readMatrixCoef();
+		openFile (fName);
+		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
 
@@ -204,21 +175,21 @@ int main (int argc, char *argv[]){
 				MPI_Barrier(MPI_COMM_WORLD);
 
 				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Recv(&infoMatr, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				MPI_Recv(&info, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
 			else{
 				//MPI_Send(&, amountPerProcess, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Send(&infoMatr, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
 		MPI_Status status;
 		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
-		MPI_Recv(&infoMatr, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+		MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
 
 		worker(process_id);
 		MPI_Barrier(MPI_COMM_WORLD);
-		MPI_Send(&infoMatr, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
+		MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
 	}
 
 	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
