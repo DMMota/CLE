@@ -25,15 +25,16 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <pthread.h>
+//#include <pthread.h>
 #include <math.h>
 #include <stdbool.h>
 #include <time.h>
 
 #include <mpi.h>
 #include "probConst.h"
-#include "dataStruct.h"
 #include "procFile.h"
+#include "computeDet.h"
+#include "dataStruct.h"
 
 /** Master default value set to 0 */
 #define MASTER 0
@@ -133,7 +134,7 @@ int main (int argc, char *argv[]){
 		for(int i = 0; i < totalProcesses; i++){
 			if(i == MASTER){
 				worker(process_id);
-				MPI_BARRIER(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
 
 				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 				MPI_Recv(&infoMatr, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -149,7 +150,7 @@ int main (int argc, char *argv[]){
 		MPI_Recv(&infoMatr, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
 
 		worker(process_id);
-		MPI_BARRIER(MPI_COMM_WORLD);
+		MPI_Barrier(MPI_COMM_WORLD);
 		MPI_Send(&infoMatr, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
 	}
 

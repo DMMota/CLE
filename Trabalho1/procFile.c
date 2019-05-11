@@ -28,12 +28,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <pthread.h>
+//#include <pthread.h>
 #include <errno.h>
 #include <string.h>
 
 #include <mpi.h>
 #include "probConst.h"
+#include "procFile.h"
+#include "computeDet.h"
 #include "dataStruct.h"
 
 /** \brief main, dispatcher and determinant computing threads return status array */
@@ -140,7 +142,7 @@ static void initialization (void){
  *
  *  \param fName file name
  */
-MATRIXINFO*** openFile (char fName[]){
+MATRIXINFO openFile (char fName[]){
 	int i;                                                                                        /* counting variable */
 
 	//if ((statusT[K+1] = pthread_mutex_lock (&accessCR)) != 0){                                        /* enter monitor */
@@ -249,12 +251,12 @@ int readMatrixCoef (void){
 		emptyDataBuff = false;
 
 		/* let a determinant computing thread know a buffer with data is available */
-		if ((statusT[K] = pthread_cond_signal (&dataBuffEmpty)) != 0){
-			//errno = statusT[K];                                                                  /* save error in errno */
-			perror ("error on signaling for a buffer with data");
-			//statusT[K] = EXIT_FAILURE;
-			//pthread_exit (&statusT[K]);
-		}
+		//if ((statusT[K] = pthread_cond_signal (&dataBuffEmpty)) != 0){
+		//	errno = statusT[K];                                                                  /* save error in errno */
+		//	perror ("error on signaling for a buffer with data");
+		//	statusT[K] = EXIT_FAILURE;
+		//	pthread_exit (&statusT[K]);
+		//}
 	}
 
 	/* signal end of processing */
