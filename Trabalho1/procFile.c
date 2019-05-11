@@ -249,12 +249,12 @@ int readMatrixCoef (void){
 		emptyDataBuff = false;
 
 		/* let a determinant computing thread know a buffer with data is available */
-		if ((statusT[K] = pthread_cond_signal (&dataBuffEmpty)) != 0){
-			//errno = statusT[K];                                                                  /* save error in errno */
-			perror ("error on signaling for a buffer with data");
-			//statusT[K] = EXIT_FAILURE;
-			//pthread_exit (&statusT[K]);
-		}
+		//if ((statusT[K] = pthread_cond_signal (&dataBuffEmpty)) != 0){
+		//	errno = statusT[K];                                                                  /* save error in errno */
+		//	perror ("error on signaling for a buffer with data");
+		//	statusT[K] = EXIT_FAILURE;
+		//	pthread_exit (&statusT[K]);
+		//}
 	}
 
 	/* signal end of processing */
