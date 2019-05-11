@@ -21,6 +21,7 @@
  */
 
 #include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -149,10 +150,10 @@ int main (int argc, char *argv[]){
 
 	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
 	MPI_Aint offsets[4];
-	offsets[0] = offsetof(matInfo, matInfo.n);														/* setof identification */
-	offsets[1] = offsetof(matInfo, matInfo.order);												    /* setof order */
-	offsets[2] = offsetof(matInfo, matInfo.mat);												    /* setof pointer to the storage area of matrix coefficients */
-	offsets[3] = offsetof(matInfo, matInfo.detValue);											    /* setof value of the determinant */
+	offsets[0] = offsetof(MATRIXINFO, n);														/* setof identification */
+	offsets[1] = offsetof(MATRIXINFO, order);												    /* setof order */
+	offsets[2] = offsetof(MATRIXINFO, mat);												    /* setof pointer to the storage area of matrix coefficients */
+	offsets[3] = offsetof(MATRIXINFO, detValue);											    /* setof value of the determinant */
 	MPI_Datatype MPI_MATRIXINFO;
 	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
 	MPI_Type_commit(&MPI_MATRIXINFO);
