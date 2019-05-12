@@ -95,6 +95,9 @@ int noDataBuffEmpty;
 /** \brief determinant computing threads synchronization point when all data buffers are empty */
 int dataBuffEmpty;
 
+/** \brief amount of matrix calculation per process */
+int amountPerProcess;
+
 /**
  *  \brief Main thread.
  *
@@ -160,7 +163,6 @@ int main (int argc, char *argv[]){
 
 	double t0, t1;                                                                                     /* time limits */
 	t0 = ((double) clock ()) / CLOCKS_PER_SEC;
-	int amountPerProcess;
 
 	if(process_id == MASTER) {
 		printf ("Entrei processo master.\n");
@@ -173,25 +175,22 @@ int main (int argc, char *argv[]){
 		for(int i = 0; i < totalProcesses; i++){
 			if(i == MASTER){
 				worker(process_id);
-				MPI_Barrier(MPI_COMM_WORLD);
+				//MPI_Barrier(MPI_COMM_WORLD);
 
-				//MPI_Recv(&, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Recv(&info, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				//MPI_Recv(&info, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
 			else{
-				//MPI_Send(&, amountPerProcess, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
-		printf ("Entrei processo worker.\n");
+		printf ("Entrei processo worker %d.\n", process_id);
 		MPI_Status status;
-		//MPI_Recv(&, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
-		MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
+		//MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
 
 		worker(process_id);
-		MPI_Barrier(MPI_COMM_WORLD);
-		MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
+		//MPI_Barrier(MPI_COMM_WORLD);
+		//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
 	}
 
 	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
@@ -225,7 +224,6 @@ static void *worker (int process_id){
 	id = process_id;
 
 	/* fetch a data buffer */
-
 	while (getMatrixCoef(id, &buf)){
 		found = false;
 
@@ -259,7 +257,6 @@ static void *worker (int process_id){
 		}
 
 		/* compute the determinant */
-
 		if (found)
 			for (k = 0; k < buf->order; k++)
 				buf->detValue *= *(buf->mat + k * buf->order + k);
@@ -300,7 +297,7 @@ static void initialization (void){
 /**
  *  \brief Open file and initialize internal data structure.
  *
- *  Operation carried out by the main thread.
+ *  Operation carried out by the master.
  *
  *  \param fName file name
  */
@@ -340,8 +337,7 @@ void openFile (char fName[]){
 /**
  *  \brief Read matrix coefficients from the file.
  *
- *  Operation carried out by the dispatcher.
- *  The dispatcher is blocked if there are no empty data buffers.
+ *  Operation carried out by the master.
  */
 void readMatrixCoef (void){
 	printf ("Reading Matrix Coef...\n");
@@ -371,14 +367,12 @@ void readMatrixCoef (void){
 
 	/* signal end of processing */
 	end = true;
-
-	//MPI_T_finalize();
 }
 
 /**
  *  \brief Close file and print the values of the determinants.
  *
- *  Operation carried out by the main thread.
+ *  Operation carried out by the master
  */
 void closeFileAndPrintDetValues (void){
 	printf ("Closing and Printing values...\n");
@@ -402,8 +396,6 @@ void closeFileAndPrintDetValues (void){
 	for (i = 0; i < K + 2; i++)
 		printf ("%8u         ", nEntries[i]);
 	printf ("\n");
-
-	//MPI_T_finalize();
 }
 
 /**
@@ -426,20 +418,20 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	nEntries[id] += 1;
 
 	/* check for end of processing */
-
 	if (emptyDataBuff && end){											 /* let possible determinant computing threads know the processing is terminated */
-		while (nBlocks > 0){
+		while (nBlocks > 0)
 			nBlocks -= 1;
-		}
 		return false;
 	}
 
 	/* wait for a data buffer with data to become available */
 	while (emptyDataBuff){
 		nBlocks += 1;
+		//printf("%d - 1\n", nBlocks);
 		if (emptyDataBuff && end)
 			return false;
 		else nBlocks -= 1;
+		//printf("%d - 2\n", nBlocks);
 	}
 
 	/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with data */
@@ -461,7 +453,7 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
  *  \param buf pointer to matrix buffer
  */
 void returnDetValue (unsigned int id, MATRIXINFO *buf){
-	printf ("Returning det value...\n");
+	printf ("Returning Det Value...\n");
 
 	initialization();
 	nEntries[id] += 1;
