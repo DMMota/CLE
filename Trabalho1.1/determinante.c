@@ -167,30 +167,29 @@ int main (int argc, char *argv[]){
 		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
+		MATRIXINFO infoMat[nMat/amountPerProcess];
+		int count;
 
 		for(int i = 0; i < totalProcesses; i++){
+			count = 0;
+			for(int j = 0; j < nMat; j++){
+				infoMat[count] = info[j];
+				if(count == amountPerProcess)
+					break;
+			}
 			if(i == MASTER){
-				MATRIXINFO infoMat[N/amountPerProcess];
-				count = 0;
-				for(int j = 0; j < nMat; j++){
-					infoMat[count] = info[j];
-					if(count%amountPerProcess == 0){
-						MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-						MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
-						count = 0;
-					}
-					else
-						count++;
-				}
-				MPI_Recv(&det, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				worker(process_id);
-				MPI_Barrier(MPI_COMM_WORLD);
+				// do calc
+				worker(i);
+			}
+			else{
+				//MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				//MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
-		MPI_Recv(&det, 1, MPI_DOUBLE, process_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		worker(process_id);
+		//MPI_Recv(&det, 1, MPI_DOUBLE, process_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		//worker(process_id);
 		//MPI_Barrier(MPI_COMM_WORLD);
 		//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
 	}
@@ -427,12 +426,10 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 
 	/* wait for a data buffer with data to become available */
 	while (emptyDataBuff){
-		//nBlocks += 1;
 		//printf("%d - 1\n", nBlocks);
 		if (emptyDataBuff && end)
 			return false;
 		else nBlocks -= 1;
-		//printf("%d - 2\n", nBlocks);
 	}
 
 	/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with data */
