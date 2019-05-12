@@ -50,9 +50,6 @@ static double *det;
 /** \brief array of buffers to store matrix coefficients */
 static MATRIXINFO info[N];
 
-/** \brief matrix struct */
-static MATRIXINFO matInfo;
-
 /** \brief storage area for the FIFO of pointers to buffers with data */
 MATRIXINFO *dataBuff[N];
 
@@ -173,14 +170,21 @@ int main (int argc, char *argv[]){
 
 		for(int i = 0; i < totalProcesses; i++){
 			if(i == MASTER){
+				MATRIXINFO infoMat[N/amountPerProcess];
+				count = 0;
+				for(int j = 0; j < nMat; j++){
+					infoMat[count] = info[j];
+					if(count%amountPerProcess == 0){
+						MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+						MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+						count = 0;
+					}
+					else
+						count++;
+				}
+				MPI_Recv(&det, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				worker(process_id);
 				MPI_Barrier(MPI_COMM_WORLD);
-
-				MPI_Recv(&det, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			}
-			else{
-				MPI_Send(&nMat, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Send(&buf, nMat*nMat, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
