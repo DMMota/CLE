@@ -167,7 +167,7 @@ int main (int argc, char *argv[]){
 		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
-		MATRIXINFO infoMat[nMat/amountPerProcess];
+		MATRIXINFO infoMat = (MATRIXINFO) malloc(amountPerProcess*sizeof(MATRIXINFO));;
 		int count;
 
 		for(int i = 0; i < totalProcesses; i++){
@@ -179,26 +179,44 @@ int main (int argc, char *argv[]){
 			}
 			if(i == MASTER){
 				// do calc
-				worker(i);
+				for(int x = 0; x < amountPerProcess; x++)
+					worker(i, infoMat[x]);
+				MPI_Barrier(MPI_COMM_WORLD);
+
+				// print work
+				closeFileAndPrintDetValues ();
+
+				for(int j = 1; j < totalProcesses; j++){
+					MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+					/* close file and print the values of the determinants */
+					closeFileAndPrintDetValues ();
+				}
+				t1 = ((double) clock ()) / CLOCKS_PER_SEC;
+
+				printf ("\nElapsed time = %.6f s\n", t1 - t0);
 			}
 			else{
-				//MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				//MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
-		//MPI_Recv(&det, 1, MPI_DOUBLE, process_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		//worker(process_id);
-		//MPI_Barrier(MPI_COMM_WORLD);
-		//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
+		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		MATRIXINFO infoMat = (MATRIXINFO) malloc(amountPerProcess*sizeof(MATRIXINFO));
+		MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+		for(int x = 0; x < amountPerProcess; x++)
+			worker(process_id, infoMat[x]);
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, MASTER, 0, MPI_COMM_WORLD);
+		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
 	}
-
-	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
-
-	/* close file and print the values of the determinants */
-	closeFileAndPrintDetValues ();
-	printf ("\nElapsed time = %.6f s\n", t1 - t0);
 
 	MPI_Type_free(&MPI_MATRIXINFO);
 	MPI_Finalize();
@@ -214,7 +232,7 @@ int main (int argc, char *argv[]){
  *
  *  \param par pointer to application defined worker identification
  */
-static void *worker (int process_id){
+static void *worker (int process_id, MATRIXINFO *infoMat){
 	int id;																				/* worker id */
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
 	int k, m, r;                                                                                 /* counting variables */
@@ -222,6 +240,7 @@ static void *worker (int process_id){
 	bool found;                                                                             /* non-null value is found */
 
 	id = process_id;
+	*buf = infoMat;
 
 	/* fetch a data buffer */
 	while (getMatrixCoef(id, &buf)){
@@ -382,17 +401,8 @@ void closeFileAndPrintDetValues (void){
 		perror ("error on closing file");
 	printf ("\n");
 
-	printf ("TESTE");
 	for (n = 0; n < nMat; n++)
 		printf ("The determinant of matrix %d is %.3e\n", n, det[n]);
-	printf ("\n");
-
-	for (i = 0; i < K; i++)
-		printf ("N. ent. thread %u ", i);
-	printf ("  Dispatcher       Main thread\n");
-
-	for (i = 0; i < K + 2; i++)
-		printf ("%8u         ", nEntries[i]);
 	printf ("\n");
 }
 
@@ -426,7 +436,6 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 
 	/* wait for a data buffer with data to become available */
 	while (emptyDataBuff){
-		//printf("%d - 1\n", nBlocks);
 		if (emptyDataBuff && end)
 			return false;
 		else nBlocks -= 1;
@@ -462,8 +471,6 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf){
 	noDataBuff[iiNoDataBuff] = buf;
 	iiNoDataBuff = (iiNoDataBuff + 1) % N;
 	emptyNoDataBuff = false;
-
-	//MPI_Send(&det, 1, MPI_DOUBLE, id, 0, MPI_COMM_WORLD);
 }
 
 /**
