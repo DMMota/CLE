@@ -150,7 +150,6 @@ int main (int argc, char *argv[]){
 	/* Create Data type for structure MATRIXINFO to send and receive with MPI */
 	int nitems = 4;
 	int blocklengths[4] = {1,1,1,1};
-
 	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
 	MPI_Aint offsets[4];
 	offsets[0] = offsetof(MATRIXINFO, n);														/* setof identification */
@@ -175,19 +174,18 @@ int main (int argc, char *argv[]){
 		for(int i = 0; i < totalProcesses; i++){
 			if(i == MASTER){
 				worker(process_id);
-				//MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
 
-				//MPI_Recv(&info, nMat, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				MPI_Recv(&det, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
 			else{
-				//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&nMat, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&buf, nMat*nMat, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 			}
 		}
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
-		MPI_Status status;
-		//MPI_Recv(&info, nMat, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &status);
-
+		MPI_Recv(&det, 1, MPI_DOUBLE, process_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		worker(process_id);
 		//MPI_Barrier(MPI_COMM_WORLD);
 		//MPI_Send(&info, amountPerProcess, MPI_MATRIXINFO, process_id, 0, MPI_COMM_WORLD);
@@ -196,7 +194,6 @@ int main (int argc, char *argv[]){
 	t1 = ((double) clock ()) / CLOCKS_PER_SEC;
 
 	/* close file and print the values of the determinants */
-	printf ("\nFinal report\n");
 	closeFileAndPrintDetValues ();
 	printf ("\nElapsed time = %.6f s\n", t1 - t0);
 
@@ -290,8 +287,6 @@ static void initialization (void){
 	emptyNoDataBuff = false;                                  /* FIFO of pointers to buffers with no data is not empty */
 	nBlocks = 0;                                       /* no determinant computing threads are presently blocked */
 	end = false;                                                                  /* processing has not terminated yet */
-
-	//MPI_T_init_thread(MPI_THREAD_SERIALIZED, MPI_THREAD_SERIALIZED);
 }
 
 /**
@@ -330,8 +325,6 @@ void openFile (char fName[]){
 		info[i].order = order;
 		info[i].mat = mat + i * order * order;
 	}
-
-	//MPI_T_finalize();
 }
 
 /**
@@ -349,7 +342,6 @@ void readMatrixCoef (void){
 
 	for (n = 0; n < nMat; n++){
 		/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with no data */
-
 		buf = noDataBuff[riNoDataBuff];
 		riNoDataBuff = (riNoDataBuff + 1) % N;
 		emptyNoDataBuff = (iiNoDataBuff == riNoDataBuff);
@@ -367,6 +359,8 @@ void readMatrixCoef (void){
 
 	/* signal end of processing */
 	end = true;
+
+	MPI_Send(&end, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
 }
 
 /**
@@ -375,7 +369,7 @@ void readMatrixCoef (void){
  *  Operation carried out by the master
  */
 void closeFileAndPrintDetValues (void){
-	printf ("Closing and Printing values...\n");
+	printf ("Closing and Printing Values...\n");
 
 	int i, n;                                                                                     /* counting variable */
 	initialization();
@@ -385,6 +379,7 @@ void closeFileAndPrintDetValues (void){
 		perror ("error on closing file");
 	printf ("\n");
 
+	printf ("TESTE");
 	for (n = 0; n < nMat; n++)
 		printf ("The determinant of matrix %d is %.3e\n", n, det[n]);
 	printf ("\n");
@@ -417,6 +412,8 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	initialization();
 	nEntries[id] += 1;
 
+	MPI_Recv(&end, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
 	/* check for end of processing */
 	if (emptyDataBuff && end){											 /* let possible determinant computing threads know the processing is terminated */
 		while (nBlocks > 0)
@@ -426,7 +423,7 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 
 	/* wait for a data buffer with data to become available */
 	while (emptyDataBuff){
-		nBlocks += 1;
+		//nBlocks += 1;
 		//printf("%d - 1\n", nBlocks);
 		if (emptyDataBuff && end)
 			return false;
@@ -440,7 +437,6 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
 	emptyDataBuff = (iiDataBuff == riDataBuff);
 	*bufPnt = buf;
 
-	//MPI_T_finalize();
 	return true;
 }
 
@@ -449,7 +445,7 @@ bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
  *
  *  Operation carried out by the determinant computing threads.
  *
- *  \param id determinant computing thread id
+ *  \param id determinant computing process id
  *  \param buf pointer to matrix buffer
  */
 void returnDetValue (unsigned int id, MATRIXINFO *buf){
@@ -466,7 +462,7 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf){
 	iiNoDataBuff = (iiNoDataBuff + 1) % N;
 	emptyNoDataBuff = false;
 
-	//MPI_T_finalize();
+	//MPI_Send(&det, 1, MPI_DOUBLE, id, 0, MPI_COMM_WORLD);
 }
 
 /**
