@@ -167,7 +167,7 @@ int main (int argc, char *argv[]){
 		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
-		MATRIXINFO infoMat = (MATRIXINFO) malloc(amountPerProcess*sizeof(MATRIXINFO));;
+		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
 		int count;
 
 		for(int i = 0; i < totalProcesses; i++){
@@ -180,7 +180,7 @@ int main (int argc, char *argv[]){
 			if(i == MASTER){
 				// do calc
 				for(int x = 0; x < amountPerProcess; x++)
-					worker(i, infoMat[x]);
+					worker(i, &infoMat[x]);
 				MPI_Barrier(MPI_COMM_WORLD);
 
 				// print work
@@ -206,12 +206,12 @@ int main (int argc, char *argv[]){
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		MATRIXINFO infoMat = (MATRIXINFO) malloc(amountPerProcess*sizeof(MATRIXINFO));
+		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
 		MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 		for(int x = 0; x < amountPerProcess; x++)
-			worker(process_id, infoMat[x]);
+			worker(process_id, &infoMat[x]);
 		MPI_Barrier(MPI_COMM_WORLD);
 
 		MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, MASTER, 0, MPI_COMM_WORLD);
@@ -240,7 +240,7 @@ static void *worker (int process_id, MATRIXINFO *infoMat){
 	bool found;                                                                             /* non-null value is found */
 
 	id = process_id;
-	*buf = infoMat;
+	*buf = *infoMat;
 
 	/* fetch a data buffer */
 	while (getMatrixCoef(id, &buf)){

@@ -44,7 +44,7 @@ typedef struct{
 static void printUsage (char *cmdName);
 
 /** \brief determinant computing threads life cycle routine */
-static void *worker (int process_id);
+static void *worker (int process_id, MATRIXINFO *infoMat);
 
 /** \brief Open file and initialize internal data structure. */
 extern void openFile (char fName[]);
