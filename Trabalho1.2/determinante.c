@@ -157,8 +157,8 @@ int main (int argc, char *argv[]){
 	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
 	MPI_Type_commit(&MPI_MATRIXINFO);
 
-	double t0, t1;                                                                                     /* time limits */
-	t0 = ((double) clock ()) / CLOCKS_PER_SEC;
+	double StartTime, EndTime;                                                                                     /* time limits */
+	StartTime = MPI_Wtime();
 
 	if(process_id == MASTER) {
 		printf ("Entrei processo master.\n");
@@ -193,9 +193,9 @@ int main (int argc, char *argv[]){
 					/* close file and print the values of the determinants */
 					closeFileAndPrintDetValues ();
 				}
-				t1 = ((double) clock ()) / CLOCKS_PER_SEC;
+				EndTime = MPI_Wtime();
 
-				printf ("\nElapsed time = %.6f s\n", t1 - t0);
+				printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
 			}
 			else{
 				MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -471,6 +471,91 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf){
 	noDataBuff[iiNoDataBuff] = buf;
 	iiNoDataBuff = (iiNoDataBuff + 1) % N;
 	emptyNoDataBuff = false;
+}
+
+double detMatrix(double **a, int s, int end, int n) {
+	int i, j, j1, j2;
+	double det;
+	double **m = NULL;
+
+	det = 0;                      // initialize determinant of sub-matrix
+
+	// for each column in sub-matrix
+	for (j1 = s; j1 < end; j1++) {
+		// get space for the pointer list
+		m = (double **) malloc((n - 1) * sizeof(double *));
+
+		for (i = 0; i < n - 1; i++)
+			m[i] = (double *) malloc((n - 1) * sizeof(double));
+
+		for (i = 1; i < n; i++) {
+			j2 = 0;
+			for (j = 0; j < n; j++) {
+				if (j == j1) continue;
+				m[i - 1][j2] = a[i][j];
+				j2++;
+			}
+		}
+		int dim = n - 1;
+		double fMatr[dim * dim];
+		for (i = 0; i < dim; i++)
+			for (j = 0; j < dim; j++)
+				fMatr[i * dim + j] = m[i][j];
+
+
+		det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
+
+		for (i = 0; i < n - 1; i++) free(m[i]);
+
+		free(m);
+
+	}
+
+	return (det);
+}
+
+double detMatrixHelper(int nDim, double *pfMatr) {
+	double fDet = 1.;
+	double fMaxElem;
+	double fAcc;
+	int i, j, k, m;
+
+	for (k = 0; k < (nDim - 1); k++){ 										// base row of matrix
+
+		// search of line with max element
+		fMaxElem = fabs(pfMatr[k * nDim + k]);
+		m = k;
+		for (i = k + 1; i < nDim; i++) {
+			if (fMaxElem < fabs(pfMatr[i * nDim + k])) {
+				fMaxElem = pfMatr[i * nDim + k];
+				m = i;
+			}
+		}
+
+		// permutation of base line (index k) and max element line(index m)
+		if (m != k) {
+			for (i = k; i < nDim; i++) {
+				fAcc = pfMatr[k * nDim + i];
+				pfMatr[k * nDim + i] = pfMatr[m * nDim + i];
+				pfMatr[m * nDim + i] = fAcc;
+			}
+			fDet *= (-1.);
+		}
+
+		if (pfMatr[k * nDim + k] == 0.) return 0.0;
+
+		// trianglulation of matrix
+		for (j = (k + 1); j < nDim; j++){ 						// current row of matrix
+			fAcc = -pfMatr[j * nDim + k] / pfMatr[k * nDim + k];
+			for (i = k; i < nDim; i++)
+				pfMatr[j * nDim + i] = pfMatr[j * nDim + i] + fAcc * pfMatr[k * nDim + i];
+		}
+	}
+
+	for (i = 0; i < nDim; i++)
+		fDet *= pfMatr[i * nDim + i]; // diagonal elements multiplication
+
+	return fDet;
 }
 
 /**

@@ -60,3 +60,5 @@ extern bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt);
 
 /** \brief Return a buffer with the matrix determinant already computed. */
 extern void returnDetValue (unsigned int id, MATRIXINFO *buf);
+
+
