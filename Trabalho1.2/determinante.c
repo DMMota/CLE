@@ -164,17 +164,16 @@ int main (int argc, char *argv[]){
 		printf ("Entrei processo master.\n");
 		/* open the file for reading */
 		openFile (fName);
-		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
-		MATRIXINFO **infoMat = (MATRIXINFO**) malloc(amountPerProcess*sizeof(MATRIXINFO*));
+		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
 		int count;
 
 		for(int i = 0; i < totalProcesses; i++){
 			printf ("\ntotal teste %d\n", i);
 			count = 0;
 			for(int j = 0; j < nMat; j++){
-				infoMat[count]->mat = info[j].mat;
+				fread (&infoMat->mat, sizeof (double), order * order, f) != (order * order);
 				if(count == amountPerProcess)
 					break;
 			}
@@ -182,7 +181,7 @@ int main (int argc, char *argv[]){
 			if(i == MASTER){
 				for(int x = 0; x < amountPerProcess; x++){
 					//worker(i, &infoMat[x]);
-					detMatrix(&infoMat[x]->mat, 0, amountPerProcess, nMat);
+					detMatrix(&infoMat[x].mat, 0, amountPerProcess, nMat);
 				}
 				//MPI_Barrier(MPI_COMM_WORLD);
 
@@ -248,8 +247,6 @@ int main (int argc, char *argv[]){
  *  \param fName file name
  */
 void openFile (char fName[]){
-	printf ("Opening File...\n");
-
 	int i;                                                                                        /* counting variable */
 
 	if (strlen (fName) > M)
@@ -273,25 +270,6 @@ void openFile (char fName[]){
 	for (i = 0; i < N; i++){
 		info[i].order = order;
 		info[i].mat = mat + i * order * order;
-	}
-}
-
-/**
- *  \brief Read matrix coefficients from the file.
- *
- *  Operation carried out by the master.
- */
-void readMatrixCoef (void){
-	printf ("Reading Matrix Coef...\n");
-
-	int n;                                                                                        /* counting variable */
-	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-
-	for (n = 0; n < nMat; n++){
-		/* initialize and read matrix coefficients into the data buffer */
-		buf->n = n;
-		if (fread (buf->mat, sizeof (double), order * order, f) != (order * order))
-			fprintf (stderr, "error on reading matrix coefficients in iteration %d\n", n);
 	}
 }
 
@@ -325,16 +303,8 @@ void closeFileAndPrintDetValues (void){
 void returnDetValue (unsigned int id, MATRIXINFO *buf){
 	printf ("Returning Det Value...\n");
 
-	initialization();
-	nEntries[id] += 1;
-
 	/* store the value of the determinant */
 	det[buf->n] = buf->detValue;
-
-	/* insert the pointer to the buffer into the FIFO of pointers to buffers with no data */
-	noDataBuff[iiNoDataBuff] = buf;
-	iiNoDataBuff = (iiNoDataBuff + 1) % N;
-	emptyNoDataBuff = false;
 }
 
 double detMatrix(double **a, int s, int end, int n) {
@@ -342,44 +312,47 @@ double detMatrix(double **a, int s, int end, int n) {
 	int i, j, j1, j2;
 	double det;
 	double **m = NULL;
-
+	printf ("n...%d %d\n", n, end);
 	det = 0;                      // initialize determinant of sub-matrix
 
 	// for each column in sub-matrix
-	for (j1 = s; j1 < end; j1++) {
-		// get space for the pointer list
-		m = (double **) malloc((n - 1) * sizeof(double *));
+	//for (j1 = s; j1 < end; j1++) {
+	// get space for the pointer list
+	m = (double **) malloc((n - 1) * sizeof(double *));
 
-		for (i = 0; i < n - 1; i++)
+	printf ("Calculating 1...\n");
+	/*for (i = 0; i < n - 1; i++){
 			m[i] = (double *) malloc((n - 1) * sizeof(double));
-
-		for (i = 1; i < n; i++) {
-			j2 = 0;
-			for (j = 0; j < n; j++) {
-				if (j == j1) continue;
-				m[i - 1][j2] = a[i][j];
-				j2++;
-			}
+			printf ("Calculating 2.0...\n");
+		}*/
+	printf ("Calculating 2.1...\n");
+	for (i = 1; i < n; i++) {
+		for (j = 0; j < n; j++) {
+			m[i - 1][j - 1] = a[i][j];
 		}
-		int dim = n - 1;
-		double fMatr[dim * dim];
-		for (i = 0; i < dim; i++)
-			for (j = 0; j < dim; j++)
-				fMatr[i * dim + j] = m[i][j];
-
-		det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
-
-		for (i = 0; i < n - 1; i++)
-			free(m[i]);
-
-		free(m);
-
 	}
+
+	printf ("Calculating 3...\n");
+	int dim = n - 1;
+	double fMatr[dim * dim];
+	for (i = 0; i < dim; i++)
+		for (j = 0; j < dim; j++)
+			fMatr[i * dim + j] = m[i][j];
+
+	det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
+
+	for (i = 0; i < n - 1; i++)
+		free(m[i]);
+
+	free(m);
+
+	//}
 	printf ("\nDet %f\n", det);
 	return (det);
 }
 
 double detMatrixHelper(int nDim, double *pfMatr) {
+	printf ("Calculating Helper...\n");
 	double fDet = 1.;
 	double fMaxElem;
 	double fAcc;
