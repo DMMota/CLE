@@ -179,8 +179,11 @@ int main (int argc, char *argv[]){
 			}
 			if(i == MASTER){
 				// do calc
-				for(int x = 0; x < amountPerProcess; x++)
-					worker(i, &infoMat[x]);
+				for(int x = 0; x < amountPerProcess; x++){
+					//worker(i, &infoMat[x]);
+					getMatrixCoef(process_id, &infoMat);
+					detMatrix(infoMat->mat, 0, amountPerProcess, nMat);
+				}
 				MPI_Barrier(MPI_COMM_WORLD);
 
 				// print work
@@ -212,8 +215,8 @@ int main (int argc, char *argv[]){
 
 		for(int x = 0; x < amountPerProcess; x++){
 			//worker(process_id, &infoMat[x]);
-			getMatrixCoef(process_id, &infoMat)
-			detMatrix(buf->mat, 0, amountPerProcess, int nMat)
+			getMatrixCoef(process_id, &infoMat);
+			detMatrix(infoMat->mat, 0, amountPerProcess, nMat);
 		}
 
 		MPI_Barrier(MPI_COMM_WORLD);
@@ -225,69 +228,6 @@ int main (int argc, char *argv[]){
 	MPI_Type_free(&MPI_MATRIXINFO);
 	MPI_Finalize();
 	return 0;
-}
-
-/**
- *  \brief Function determinant computing thread.
- *
- *  It fetches a data buffer with the coefficients of a square matrix and computes its determinant using the method of
- *  Gaussian elimination.
- *  Its role is to simulate the life cycle of a worker.
- *
- *  \param par pointer to application defined worker identification
- */
-static void *worker (int process_id, MATRIXINFO *infoMat){
-	int id;																				/* worker id */
-	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-	int k, m, r;                                                                                 /* counting variables */
-	double tmp;                                                                                     /* temporary value */
-	bool found;                                                                             /* non-null value is found */
-
-	id = process_id;
-	*buf = *infoMat;
-
-	/* fetch a data buffer */
-	while (getMatrixCoef(id, &buf)){
-		found = false;
-
-		/* apply Gaussian elimination procedure */
-		buf->detValue = 1.0;
-		for (k = 0; k < buf->order - 1; k++){ /* check if pivot element is null */
-			if (fabs (*(buf->mat + k * buf->order + k)) < 1.0e-20){ /* try and get a non-null element */
-				found = false;
-				for (m = k + 1; m < buf->order; m++)
-					if (fabs (*(buf->mat + k * buf->order + m)) >= 1.0e-20){ /* swap columns */
-						for (r = 0; r < buf->order; r++){
-							tmp = *(buf->mat + r * buf->order + k);
-							*(buf->mat + r * buf->order + k) = *(buf->mat + r * buf->order + m);
-							*(buf->mat + r * buf->order + m) = tmp;
-						}
-						buf->detValue = -buf->detValue;                           /* reverse the signal of the determinant */
-						found = true;
-						break;
-					}
-			}
-			else found = true;
-			if (!found){ /* null row */
-				break;
-			}
-			/* apply row transformation */
-			for (m = k + 1; m < buf->order; m++){
-				tmp = *(buf->mat + m * buf->order + k) / *(buf->mat + k * buf->order + k);
-				for (r = k; r < buf->order; r++)
-					*(buf->mat + m * buf->order + r) -= tmp * *(buf->mat + k * buf->order + r);
-			}
-		}
-
-		/* compute the determinant */
-		if (found)
-			for (k = 0; k < buf->order; k++)
-				buf->detValue *= *(buf->mat + k * buf->order + k);
-		else buf->detValue = 0.0;
-
-		/* return computed value */
-		returnDetValue (id, buf);
-	}
 }
 
 /**
@@ -478,6 +418,7 @@ void returnDetValue (unsigned int id, MATRIXINFO *buf){
 }
 
 double detMatrix(double **a, int s, int end, int n) {
+	printf ("Calculating...\n");
 	int i, j, j1, j2;
 	double det;
 	double **m = NULL;
@@ -514,7 +455,7 @@ double detMatrix(double **a, int s, int end, int n) {
 		free(m);
 
 	}
-
+	printf ("\nDet %f\n", det);
 	return (det);
 }
 
@@ -559,7 +500,6 @@ double detMatrixHelper(int nDim, double *pfMatr) {
 	for (i = 0; i < nDim; i++)
 		fDet *= pfMatr[i * nDim + i]; // diagonal elements multiplication
 
-	printf (fDet);
 	return fDet;
 }
 
