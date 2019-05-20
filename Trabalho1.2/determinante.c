@@ -167,59 +167,71 @@ int main (int argc, char *argv[]){
 		readMatrixCoef();
 
 		amountPerProcess = nMat / totalProcesses;
-		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
+		MATRIXINFO **infoMat = (MATRIXINFO**) malloc(amountPerProcess*sizeof(MATRIXINFO*));
 		int count;
 
 		for(int i = 0; i < totalProcesses; i++){
+			printf ("\ntotal teste %d\n", i);
 			count = 0;
 			for(int j = 0; j < nMat; j++){
-				infoMat[count] = info[j];
+				infoMat[count]->mat = info[j].mat;
 				if(count == amountPerProcess)
 					break;
 			}
+
 			if(i == MASTER){
-				// do calc
+				getMatrixCoef(process_id, infoMat);
+
 				for(int x = 0; x < amountPerProcess; x++){
 					//worker(i, &infoMat[x]);
-					getMatrixCoef(process_id, &infoMat);
-					detMatrix(infoMat->mat, 0, amountPerProcess, nMat);
+					detMatrix(&infoMat[x]->mat, 0, amountPerProcess, nMat);
 				}
-				MPI_Barrier(MPI_COMM_WORLD);
+				//MPI_Barrier(MPI_COMM_WORLD);
 
-				// print work
-				closeFileAndPrintDetValues ();
-
-				for(int j = 1; j < totalProcesses; j++){
-					MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-					/* close file and print the values of the determinants */
-					closeFileAndPrintDetValues ();
-				}
-				EndTime = MPI_Wtime();
-
-				printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
 			}
 			else{
+				printf ("\nteste %d\n", i);
 				MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				printf ("\nteste %d\n", i);
 				MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
+				printf ("\nteste %d\n", i);
 				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+				printf ("\nteste %d\n", i);
 			}
+
+
 		}
+		// print work
+		closeFileAndPrintDetValues ();
+
+		for(int j = 1; j < totalProcesses; j++){
+			MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			/* close file and print the values of the determinants */
+			closeFileAndPrintDetValues ();
+		}
+		EndTime = MPI_Wtime();
+
+		printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
+
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
+		printf ("amount per process xxx %d.\n", amountPerProcess);
+		MATRIXINFO **infoMat = (MATRIXINFO**) malloc(amountPerProcess*sizeof(MATRIXINFO*));
 		MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		printf ("infomat teste\n");
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		printf ("detteste \n");
 
 		for(int x = 0; x < amountPerProcess; x++){
 			//worker(process_id, &infoMat[x]);
-			getMatrixCoef(process_id, &infoMat);
-			detMatrix(infoMat->mat, 0, amountPerProcess, nMat);
+			//getMatrixCoef(process_id, infoMat);
+			detMatrix(&infoMat[x]->mat, 0, amountPerProcess, nMat);
 		}
 
-		MPI_Barrier(MPI_COMM_WORLD);
+		//MPI_Barrier(MPI_COMM_WORLD);
 
 		MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, MASTER, 0, MPI_COMM_WORLD);
 		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
