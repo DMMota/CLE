@@ -210,8 +210,12 @@ int main (int argc, char *argv[]){
 		MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-		for(int x = 0; x < amountPerProcess; x++)
-			worker(process_id, &infoMat[x]);
+		for(int x = 0; x < amountPerProcess; x++){
+			//worker(process_id, &infoMat[x]);
+			getMatrixCoef(process_id, &infoMat)
+			detMatrix(buf->mat, 0, amountPerProcess, int nMat)
+		}
+
 		MPI_Barrier(MPI_COMM_WORLD);
 
 		MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, MASTER, 0, MPI_COMM_WORLD);
@@ -502,10 +506,10 @@ double detMatrix(double **a, int s, int end, int n) {
 			for (j = 0; j < dim; j++)
 				fMatr[i * dim + j] = m[i][j];
 
-
 		det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
 
-		for (i = 0; i < n - 1; i++) free(m[i]);
+		for (i = 0; i < n - 1; i++)
+			free(m[i]);
 
 		free(m);
 
@@ -555,6 +559,7 @@ double detMatrixHelper(int nDim, double *pfMatr) {
 	for (i = 0; i < nDim; i++)
 		fDet *= pfMatr[i * nDim + i]; // diagonal elements multiplication
 
+	printf (fDet);
 	return fDet;
 }
 

@@ -24,7 +24,7 @@
 typedef struct{
 	unsigned int n;                                                            /* identification of the matrix */
 	unsigned int order;                                                                 /* order of the matrix */
-	double *mat;                                         /* pointer to the storage area of matrix coefficients */
+	double **mat;                                         /* pointer to the storage area of matrix coefficients */
 	double detValue;                                                               /* value of the determinant */
 }MATRIXINFO;
 
