@@ -180,8 +180,6 @@ int main (int argc, char *argv[]){
 			}
 
 			if(i == MASTER){
-				getMatrixCoef(process_id, infoMat);
-
 				for(int x = 0; x < amountPerProcess; x++){
 					//worker(i, &infoMat[x]);
 					detMatrix(&infoMat[x]->mat, 0, amountPerProcess, nMat);
@@ -243,31 +241,6 @@ int main (int argc, char *argv[]){
 }
 
 /**
- *  \brief Initialization of the data transfer region.
- *
- *  Internal monitor operation.
- */
-static void initialization (void){
-	int i;                                                                                        /* counting variable */
-
-	iiDataBuff = riDataBuff = 0;                /* insertion and retrieval pointers of the FIFO of pointers to buffers
-                                                                                     with data set to the same value */
-	for (i = 0; i < K + 2; i++)
-		nEntries[i] = 0;
-
-	emptyDataBuff = true;                                            /* FIFO of pointers to buffers with data is empty */
-
-	for (i = 0; i < N; i++)
-		noDataBuff[i] = info + i;                  /* fill all positions of the FIFO of pointers to buffers with no data */
-
-	iiNoDataBuff = riNoDataBuff = 0;            /* insertion and retrieval pointers of the FIFO of pointers to buffers
-                                                                                  with no data set to the same value */
-	emptyNoDataBuff = false;                                  /* FIFO of pointers to buffers with no data is not empty */
-	nBlocks = 0;                                       /* no determinant computing threads are presently blocked */
-	end = false;                                                                  /* processing has not terminated yet */
-}
-
-/**
  *  \brief Open file and initialize internal data structure.
  *
  *  Operation carried out by the master.
@@ -278,8 +251,6 @@ void openFile (char fName[]){
 	printf ("Opening File...\n");
 
 	int i;                                                                                        /* counting variable */
-	initialization();
-	nEntries[K+1] += 1;
 
 	if (strlen (fName) > M)
 		fprintf (stderr, "file name too long");
@@ -315,30 +286,13 @@ void readMatrixCoef (void){
 
 	int n;                                                                                        /* counting variable */
 	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-	initialization();
-	nEntries[K] += 1;
 
 	for (n = 0; n < nMat; n++){
-		/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with no data */
-		buf = noDataBuff[riNoDataBuff];
-		riNoDataBuff = (riNoDataBuff + 1) % N;
-		emptyNoDataBuff = (iiNoDataBuff == riNoDataBuff);
-
 		/* initialize and read matrix coefficients into the data buffer */
 		buf->n = n;
 		if (fread (buf->mat, sizeof (double), order * order, f) != (order * order))
 			fprintf (stderr, "error on reading matrix coefficients in iteration %d\n", n);
-
-		/* insert the pointer to the buffer into the FIFO of pointers to buffers with data */
-		dataBuff[iiDataBuff] = buf;
-		iiDataBuff = (iiDataBuff + 1) % N;
-		emptyDataBuff = false;
 	}
-
-	/* signal end of processing */
-	end = true;
-
-	MPI_Send(&end, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
 }
 
 /**
@@ -350,8 +304,6 @@ void closeFileAndPrintDetValues (void){
 	printf ("Closing and Printing Values...\n");
 
 	int i, n;                                                                                     /* counting variable */
-	initialization();
-	nEntries[K+1] += 1;
 
 	if (fclose (f) == EOF)
 		perror ("error on closing file");
@@ -360,50 +312,6 @@ void closeFileAndPrintDetValues (void){
 	for (n = 0; n < nMat; n++)
 		printf ("The determinant of matrix %d is %.3e\n", n, det[n]);
 	printf ("\n");
-}
-
-/**
- *  \brief Get a buffer with matrix coefficients to compute its determinant.
- *
- *  Operation carried out by the determinant computing threads.
- *  The determinant computing thread is blocked if there are no data buffers with data.
- *
- *  \param id determinant computing thread id
- *  \param bufPnt pointer to the pointer to the data buffer
- *
- *  \return true, if it could get a buffer
- *          false, if there are no more matrices whose determinant has to be computed
- */
-bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt){
-	printf ("Getting Matrix Coef...\n");
-
-	MATRIXINFO *buf;                                                                       /* pointer to a data buffer */
-	initialization();
-	nEntries[id] += 1;
-
-	MPI_Recv(&end, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-	/* check for end of processing */
-	if (emptyDataBuff && end){											 /* let possible determinant computing threads know the processing is terminated */
-		while (nBlocks > 0)
-			nBlocks -= 1;
-		return false;
-	}
-
-	/* wait for a data buffer with data to become available */
-	while (emptyDataBuff){
-		if (emptyDataBuff && end)
-			return false;
-		else nBlocks -= 1;
-	}
-
-	/* retrieve a pointer to an empty data buffer from the FIFO of pointers to buffers with data */
-	buf = dataBuff[riDataBuff];
-	riDataBuff = (riDataBuff + 1) % N;
-	emptyDataBuff = (iiDataBuff == riDataBuff);
-	*bufPnt = buf;
-
-	return true;
 }
 
 /**
