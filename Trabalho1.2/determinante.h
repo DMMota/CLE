@@ -20,14 +20,6 @@
  *  \author António Rui Borges - February 2019
  */
 
-/** \brief matrix struct */
-typedef struct{
-	unsigned int n;                                                            /* identification of the matrix */
-	unsigned int order;                                                                 /* order of the matrix */
-	double *mat;                                         /* pointer to the storage area of matrix coefficients */
-	double detValue;                                                               /* value of the determinant */
-}MATRIXINFO;
-
 /** \brief master default value set to 0 */
 #define MASTER 0
 
@@ -43,9 +35,6 @@ typedef struct{
 /** \brief print command usage */
 static void printUsage (char *cmdName);
 
-/** \brief determinant computing threads life cycle routine */
-static void *worker (int process_id, MATRIXINFO *infoMat);
-
 /** \brief Open file and initialize internal data structure. */
 extern void openFile (char fName[]);
 
@@ -54,12 +43,6 @@ extern void readMatrixCoef (void);
 
 /** \brief Close file and print the values of the determinants. */
 extern void closeFileAndPrintDetValues (void);
-
-/** \brief Get a buffer with matrix coefficients to compute its determinant. */
-extern bool getMatrixCoef (unsigned int id, MATRIXINFO **bufPnt);
-
-/** \brief Return a buffer with the matrix determinant already computed. */
-extern void returnDetValue (unsigned int id, MATRIXINFO *buf);
 
 extern double detMatrix(double **a, int s, int end, int n);
 

@@ -47,53 +47,16 @@ static double *mat;
 /** \brief pointer to the storage area of matrices determinants */
 static double *det;
 
-/** \brief array of buffers to store matrix coefficients */
-static MATRIXINFO info[N];
-
-/** \brief storage area for the FIFO of pointers to buffers with data */
-MATRIXINFO *dataBuff[N];
-
-/** \brief insertion pointer to FIFO of pointers to buffers with data */
-unsigned int iiDataBuff;
-
-/** \brief retrieval pointer to FIFO of pointers to buffers with data */
-unsigned int riDataBuff;
-
-/** \brief flag signaling FIFO of pointers to buffers with data is empty */
-bool emptyDataBuff;
-
-/** \brief storage area for the FIFO of pointers to buffers with no data */
-MATRIXINFO *noDataBuff[N];
-
-/** \brief insertion pointer to FIFO of pointers to buffers with no data */
-unsigned int iiNoDataBuff;
-
-/** \brief retrieval pointer to FIFO of pointers to buffers with no data */
-unsigned int riNoDataBuff;
-
-/** \brief flag signaling FIFO of pointers to buffers with no data is empty */
-bool emptyNoDataBuff;
-
-/** \brief number of determinant computing threads waiting for a data buffer with data */
-static unsigned int nBlocks;
-
-/** \brief flag signaling end of processing */
-static bool end;
-
 /** \brief pointer to the binary stream associated with the file in processing */
 static FILE *f;
 
-/** \brief number of entries in the monitor per thread */
-static unsigned int nEntries[K+2];
-
-/** \brief dispatcher synchronization point when all data buffers have data */
-int noDataBuffEmpty;
-
-/** \brief determinant computing threads synchronization point when all data buffers are empty */
-int dataBuffEmpty;
-
 /** \brief amount of matrix calculation per process */
 int amountPerProcess;
+
+/** \brief matrix to be filled */
+double **matrix;
+
+double *buffer;
 
 /**
  *  \brief Main thread.
@@ -144,97 +107,65 @@ int main (int argc, char *argv[]){
 	MPI_Comm_size(MPI_COMM_WORLD, &totalProcesses);									/* MPI size com numero total de processos */
 	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);										/* MPI rank com id do processo */
 
-	/* Create Data type for structure MATRIXINFO to send and receive with MPI */
-	int nitems = 4;
-	int blocklengths[4] = {1,1,1,1};
-	MPI_Datatype types[4] = {MPI_UNSIGNED, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE};
-	MPI_Aint offsets[4];
-	offsets[0] = offsetof(MATRIXINFO, n);														/* setof identification */
-	offsets[1] = offsetof(MATRIXINFO, order);												    /* setof order */
-	offsets[2] = offsetof(MATRIXINFO, mat);												    /* setof pointer to the storage area of matrix coefficients */
-	offsets[3] = offsetof(MATRIXINFO, detValue);											    /* setof value of the determinant */
-	MPI_Datatype MPI_MATRIXINFO;
-	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &MPI_MATRIXINFO);
-	MPI_Type_commit(&MPI_MATRIXINFO);
-
 	double StartTime, EndTime;                                                                                     /* time limits */
 	StartTime = MPI_Wtime();
 
 	if(process_id == MASTER) {
 		printf ("Entrei processo master.\n");
+
 		/* open the file for reading */
 		openFile (fName);
-
 		amountPerProcess = nMat / totalProcesses;
-		MATRIXINFO *infoMat = (MATRIXINFO*) malloc(amountPerProcess*sizeof(MATRIXINFO));
-		int count;
+		buffer = (double *) malloc(sizeof(double) * order * order);
 
 		for(int i = 0; i < totalProcesses; i++){
-			printf ("\ntotal teste %d\n", i);
-			count = 0;
-			for(int j = 0; j < nMat; j++){
-				fread (&infoMat->mat, sizeof (double), order * order, f) != (order * order);
-				if(count == amountPerProcess)
-					break;
-			}
+
+			fread(buffer, sizeof(double), nMat * order * order, f);
 
 			if(i == MASTER){
 				for(int x = 0; x < amountPerProcess; x++){
-					//worker(i, &infoMat[x]);
-					detMatrix(&infoMat[x].mat, 0, amountPerProcess, nMat);
+					matrix = (double *) malloc(sizeof(buffer) * order * order);
+					detMatrix(matrix, 0, amountPerProcess, nMat);
 				}
-				//MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+
+				// print work
+				closeFileAndPrintDetValues();
+
+				for(int j = 1; j < totalProcesses; j++){
+					MPI_Recv(&matrix, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+					/* close file and print the values of the determinants */
+					closeFileAndPrintDetValues ();
+				}
+				EndTime = MPI_Wtime();
+
+				printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
 
 			}
 			else{
-				printf ("\nteste %d\n", i);
 				MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				printf ("\nteste %d\n", i);
-				MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, i, 0, MPI_COMM_WORLD);
-				printf ("\nteste %d\n", i);
+				MPI_Send(&matrix, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
-				printf ("\nteste %d\n", i);
 			}
-
-
 		}
-		// print work
-		closeFileAndPrintDetValues ();
-
-		for(int j = 1; j < totalProcesses; j++){
-			MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-			/* close file and print the values of the determinants */
-			closeFileAndPrintDetValues ();
-		}
-		EndTime = MPI_Wtime();
-
-		printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
-
 	} else if(process_id > MASTER) {
 		printf ("Entrei processo worker %d.\n", process_id);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf ("amount per process xxx %d.\n", amountPerProcess);
-		MATRIXINFO **infoMat = (MATRIXINFO**) malloc(amountPerProcess*sizeof(MATRIXINFO*));
-		MPI_Recv(&infoMat, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf ("infomat teste\n");
+		matrix = (double *) malloc(sizeof(double) * nMat * order * order);
+		MPI_Recv(&matrix, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf ("detteste \n");
 
-		for(int x = 0; x < amountPerProcess; x++){
-			//worker(process_id, &infoMat[x]);
-			//getMatrixCoef(process_id, infoMat);
-			detMatrix(&infoMat[x]->mat, 0, amountPerProcess, nMat);
-		}
+		for(int x = 0; x < amountPerProcess; x++)
+			detMatrix(&matrix, 0, amountPerProcess, nMat);
 
-		//MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Barrier(MPI_COMM_WORLD);
 
-		MPI_Send(&infoMat, amountPerProcess, MPI_MATRIXINFO, MASTER, 0, MPI_COMM_WORLD);
+		MPI_Send(&matrix, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
 		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
 	}
 
-	MPI_Type_free(&MPI_MATRIXINFO);
 	MPI_Finalize();
 	return 0;
 }
@@ -266,11 +197,6 @@ void openFile (char fName[]){
 
 	if ((det = malloc (nMat * sizeof (double))) == NULL)
 		fprintf (stderr, "%s\n", "error on allocating storage area for determinant values\n");
-
-	for (i = 0; i < N; i++){
-		info[i].order = order;
-		info[i].mat = mat + i * order * order;
-	}
 }
 
 /**
@@ -292,61 +218,43 @@ void closeFileAndPrintDetValues (void){
 	printf ("\n");
 }
 
-/**
- *  \brief Return a buffer with the matrix determinant already computed.
- *
- *  Operation carried out by the determinant computing threads.
- *
- *  \param id determinant computing process id
- *  \param buf pointer to matrix buffer
- */
-void returnDetValue (unsigned int id, MATRIXINFO *buf){
-	printf ("Returning Det Value...\n");
-
-	/* store the value of the determinant */
-	det[buf->n] = buf->detValue;
-}
-
 double detMatrix(double **a, int s, int end, int n) {
 	printf ("Calculating...\n");
 	int i, j, j1, j2;
 	double det;
 	double **m = NULL;
-	printf ("n...%d %d\n", n, end);
+
 	det = 0;                      // initialize determinant of sub-matrix
 
 	// for each column in sub-matrix
-	//for (j1 = s; j1 < end; j1++) {
-	// get space for the pointer list
-	m = (double **) malloc((n - 1) * sizeof(double *));
+	for (j1 = s; j1 < end; j1++) {
+		// get space for the pointer list
+		m = (double **) malloc((n - 1) * sizeof(double *));
 
-	printf ("Calculating 1...\n");
-	/*for (i = 0; i < n - 1; i++){
+		printf ("Calculating 1...\n");
+		for (i = 0; i < n - 1; i++)
 			m[i] = (double *) malloc((n - 1) * sizeof(double));
-			printf ("Calculating 2.0...\n");
-		}*/
-	printf ("Calculating 2.1...\n");
-	for (i = 1; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			m[i - 1][j - 1] = a[i][j];
-		}
+
+		printf ("Calculating 2...\n");
+		for (i = 1; i < n; i++)
+			for (j = 0; j < n; j++)
+				m[i - 1][j - 1] = a[i][j];
+
+		printf ("Calculating 3...\n");
+		int dim = n - 1;
+		double fMatr[dim * dim];
+		for (i = 0; i < dim; i++)
+			for (j = 0; j < dim; j++)
+				fMatr[i * dim + j] = m[i][j];
+
+		det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
+
+		for (i = 0; i < n - 1; i++)
+			free(m[i]);
+
+		free(m);
+
 	}
-
-	printf ("Calculating 3...\n");
-	int dim = n - 1;
-	double fMatr[dim * dim];
-	for (i = 0; i < dim; i++)
-		for (j = 0; j < dim; j++)
-			fMatr[i * dim + j] = m[i][j];
-
-	det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * detMatrixHelper(dim, fMatr);
-
-	for (i = 0; i < n - 1; i++)
-		free(m[i]);
-
-	free(m);
-
-	//}
 	printf ("\nDet %f\n", det);
 	return (det);
 }
