@@ -38,10 +38,6 @@ extern void openFile (char fName[]);
 /** \brief Close file and print the values of the determinants. */
 extern void closeFileAndPrintDetValues (void);
 
-extern double detMatrix(double **a, int s, int end, int n);
-
-extern double detMatrixHelper(int nDim, double *pfMatr);
-
 
 
 

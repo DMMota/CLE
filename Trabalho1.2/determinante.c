@@ -101,16 +101,21 @@ int main (int argc, char *argv[]){
 
 			/* do master work */
 			if(i == MASTER){
+
+				/* aloca memoria para matriz */
+				matrix = (double **) malloc((order) * sizeof(double[order]));
+
 				/* faz calculo do determinante das matrizes */
 				for(int x = 0; x < amountPerProcess; x++){
 
-					/* aloca memoria para matriz */
-					matrix = (double **) malloc(sizeof(buffer) * order * order);
+					matrix[x] = (double *) malloc((order) * sizeof(double));
+					printf ("oioioi\n");
 
 					/* preenche matriz atraves do buffer */
 					for (int i1 = 0; i1 < order; i1++)
 						for (int j = 0; j < order; j++)
 							matrix[i1][j] = buffer[((order*order)) + (i1 * order + j)];
+					printf ("preenchimento\n");
 
 					/* eliminacao de gauss */
 					for(int k = 0; k < order-1; k++) {
@@ -121,13 +126,14 @@ int main (int argc, char *argv[]){
 								matrix[i][j] -= mult * matrix[k][j];
 						}
 					}
+					printf ("gauss\n");
 
 					/* determinante */
 					deter = 1;
 					for(int i = 0; i < order; i++)
 						deter *= matrix[i][i];
 
-
+					printf ("Det %d.\n", deter);
 				}
 
 				/* sincronizacao */
@@ -170,12 +176,13 @@ int main (int argc, char *argv[]){
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		printf ("recebi as cenas\n");
 
+		/* aloca memoria para matriz */
+		matrix = (double **) malloc((order) * sizeof(double[order]));
+
 		/* faz calculo do determinante das matrizes */
 		for(int x = 0; x < amountPerProcess; x++){
 
-			/* aloca memoria para matriz */
-			matrix = (double **) malloc(sizeof(buffer) * order * order);
-			printf ("alocacao\n");
+			matrix[x] = (double *) malloc((order) * sizeof(double));
 
 			/* preenche matriz atraves do buffer */
 			for (int i = 0; i < order; i++)
