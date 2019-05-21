@@ -32,14 +32,8 @@
 /** \brief maximum number of characters in file name */
 #define M 48
 
-/** \brief print command usage */
-static void printUsage (char *cmdName);
-
 /** \brief Open file and initialize internal data structure. */
 extern void openFile (char fName[]);
-
-/** \brief Read matrix coefficients from the file. */
-extern void readMatrixCoef (void);
 
 /** \brief Close file and print the values of the determinants. */
 extern void closeFileAndPrintDetValues (void);
