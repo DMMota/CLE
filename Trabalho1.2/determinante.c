@@ -1,23 +1,7 @@
 /**
- *  \file computeDet.c (implementation file)
  *
- *  \brief Computation of the determinant of a square matrix through the application of the Gaussian elimination method.
- *
- *  It reads the number of matrices whose determinant is to be computed and their order from a binary file. The
- *  coefficients of each matrix are stored line wise.
- *  The file name may be supplied by the user.
- *  Multithreaded implementation.
- *
- *  Generator thread of the intervening entities and definition of the intervening entities.
- *
- *  SYNOPSIS:
- *  <P><PRE>                computeDet [OPTIONS]
- *
- *                OPTIONS:
- *                 -f name --- set the file name (default: "coefData.bin")
- *                 -h      --- print this help.</PRE>
- *
- *  \author António Rui Borges - February 2019
+ *  \author Diogo Martins Mota - May 2019
+ *  \author Clony - May 2019
  */
 
 #include <stdio.h>
@@ -36,16 +20,16 @@
 #include "determinante.h"
 
 /** \brief number of square matrices whose determinant is to be computed */
-static int nMat;
+int nMat;
 
 /** \brief order of the square matrices whose determinant is to be computed */
-static unsigned int order;
+int order;
 
 /** \brief pointer to the storage area of matrices coefficients */
-static double *mat;
+double *mat;
 
 /** \brief pointer to the storage area of matrices determinants */
-static double *det;
+double *det;
 
 /** \brief pointer to the binary stream associated with the file in processing */
 static FILE *f;
@@ -56,18 +40,16 @@ int amountPerProcess;
 /** \brief matrix to be filled */
 double **matrix;
 
+/** \brief buffer of matrix to be filled */
 double *buffer;
 
-double mult;
+/** \brief variables to be used to calc determinant */
+double mult, deter;
 
-double deter;
+/** \brief variables to be used to calc time */
+double StartTime, EndTime;
 
 /**
- *  \brief Main thread.
- *
- *  Its role is starting the simulation by generating the intervening entities (dispatcher and determinant computing
- *  threads) and waiting for their termination.
- *
  *  \param argc number arguments in the command line
  *  \param argv array of pointers to the arguments
  */
@@ -81,7 +63,8 @@ int main (int argc, char *argv[]){
 	MPI_Comm_size(MPI_COMM_WORLD, &totalProcesses);									/* MPI size com numero total de processos */
 	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);										/* MPI rank com id do processo */
 
-	double StartTime, EndTime;                                                                                     /* time limits */
+	MPI_Status status;
+
 	/* Start time */
 	StartTime = MPI_Wtime();
 
@@ -92,15 +75,15 @@ int main (int argc, char *argv[]){
 		/* open the file for reading */
 		openFile (fName);
 		amountPerProcess = nMat / totalProcesses;
-		buffer = (double *) malloc(sizeof(double) * order * order);
+		buffer = (double *) malloc(sizeof(double) * nMat * order * order);
 
-		for(int i = 0; i < totalProcesses; i++){
+		for(int proc = 0; proc < totalProcesses; proc++){
 
 			/* fill the buffer with matrix values */
 			fread(buffer, sizeof(double), nMat * order * order, f);
 
 			/* do master work */
-			if(i == MASTER){
+			if(proc == MASTER){
 
 				/* aloca memoria para matriz */
 				matrix = (double **) malloc((order) * sizeof(double[order]));
@@ -109,13 +92,15 @@ int main (int argc, char *argv[]){
 				for(int x = 0; x < amountPerProcess; x++){
 
 					matrix[x] = (double *) malloc((order) * sizeof(double));
-					printf ("oioioi\n");
+
+					for(int y = 0; y < order; y++)
+						matrix[y] = (double *) malloc((order) * sizeof(double));
 
 					/* preenche matriz atraves do buffer */
-					for (int i1 = 0; i1 < order; i1++)
+					for (int i = 0; i < order; i++)
 						for (int j = 0; j < order; j++)
-							matrix[i1][j] = buffer[((order*order)) + (i1 * order + j)];
-					printf ("preenchimento\n");
+							matrix[i][j] = buffer[(((MASTER+1)*x) * (order*order)) + (i * order + j)];
+					printf ("Preenchimento\n");
 
 					/* eliminacao de gauss */
 					for(int k = 0; k < order-1; k++) {
@@ -126,55 +111,54 @@ int main (int argc, char *argv[]){
 								matrix[i][j] -= mult * matrix[k][j];
 						}
 					}
-					printf ("gauss\n");
+					printf ("Gauss\n");
 
 					/* determinante */
 					deter = 1;
 					for(int i = 0; i < order; i++)
 						deter *= matrix[i][i];
 
-					printf ("Det %d.\n", deter);
+					printf ("Det %.3e\n", deter);
+					det[(MASTER+1)*x] = deter;
 				}
 
 				/* sincronizacao */
 				//MPI_Barrier(MPI_COMM_WORLD);
 
-				/* close file and print the values of the determinants */
-				closeFileAndPrintDetValues();
-
-				for(int j = 1; j < totalProcesses; j++){
+				//for(int j = 1; j < totalProcesses; j++){
 					/* recebe dos slaves */
-					MPI_Recv(&matrix, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					//MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, FROM_SLAVE, MPI_COMM_WORLD, &status);
+				//}
 
-					/* close file and print the values of the determinants */
-					closeFileAndPrintDetValues ();
-				}
+				//closeFileAndPrintDetValues();
 
 				/* Final time */
-				EndTime = MPI_Wtime();
+				//EndTime = MPI_Wtime();
 
 				/* Print total time */
-				printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
+				//printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
 
-			}
-			else{
+			}else if(proc > MASTER){
 				/* send to slaves */
-				MPI_Send(&amountPerProcess, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				MPI_Send(&buffer, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
-				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&nMat, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(&order, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(&amountPerProcess, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(&buffer, amountPerProcess * order * order, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
+				printf ("Enviou para o slave %d.\n", proc);
 			}
 		}
 	} else if(process_id > MASTER) { /* slave work */
 		printf ("Entrei processo worker %d.\n", process_id);
 
 		/* recebe do master */
-		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf ("recebi as cenas 0\n");
-		buffer = (double *) malloc(sizeof(double) * order * order);
-		MPI_Recv(&buffer, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		printf ("recebi as cenas\n");
+		MPI_Recv(&nMat, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		MPI_Recv(&order, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		buffer = (double *) malloc(sizeof(double) * amountPerProcess * order * order);
+		MPI_Recv(&buffer, amountPerProcess * order * order, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		printf ("Slave %d recebeu.\n", process_id);
 
 		/* aloca memoria para matriz */
 		matrix = (double **) malloc((order) * sizeof(double[order]));
@@ -184,11 +168,14 @@ int main (int argc, char *argv[]){
 
 			matrix[x] = (double *) malloc((order) * sizeof(double));
 
+			for(int y = 0; y < order; y++)
+				matrix[y] = (double *) malloc((order) * sizeof(double));
+
 			/* preenche matriz atraves do buffer */
 			for (int i = 0; i < order; i++)
 				for (int j = 0; j < order; j++)
-					matrix[i][j] = buffer[((order*order)) + (i * order + j)];
-			printf ("preenchimento\n");
+					matrix[i][j] = buffer[(((process_id+1)*x) * (order*order)) + (i * order + j)];
+			printf ("Preenchimento.\n");
 
 			/* eliminacao de gauss */
 			for(int k = 0; k < order-1; k++) {
@@ -199,22 +186,22 @@ int main (int argc, char *argv[]){
 						matrix[i][j] -= mult * matrix[k][j];
 				}
 			}
-			printf ("gauss\n");
+			printf ("Gauss.\n");
 
 			/* determinante */
 			deter = 1;
 			for(int i = 0; i < order; i++)
 				deter *= matrix[i][i];
 
-			printf ("Det %d.\n", deter);
+			det[(process_id+1)*x] = deter;
+			printf ("Det %.3e\n", deter);
 		}
 
 		/* sincronizacao */
-		//MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		/* send para o master */
-		MPI_Send(&matrix, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
-		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
+		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_SLAVE, MPI_COMM_WORLD);
 	}
 
 	MPI_Finalize();
