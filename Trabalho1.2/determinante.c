@@ -44,7 +44,7 @@ double **matrix;
 double *buffer;
 
 /** \brief buffer of matrix to be filled */
-double *bufPerProc;
+double **bufPerProc;
 
 /** \brief variables to be used to calc determinant */
 double mult, deter;
@@ -78,25 +78,32 @@ int main (int argc, char *argv[]){
 
 		/* open the file for reading */
 		openFile (fName);
+
 		amountPerProcess = nMat / totalProcesses;
-		buffer = (double *) malloc(sizeof(double)  * nMat * order * order);
-		bufPerProc = (double *) malloc(sizeof(double) * order * order * nMat);
+		buffer = (double *) malloc(sizeof(double) * nMat * order * order);
+		bufPerProc = (double **) malloc(sizeof(double) * amountPerProcess * order * order);
 
 		/* fill the buffer with matrix values */
-		fread(buffer, sizeof(double), nMat * order * order, f);
+		fread(buffer, sizeof(double), order * order, f);
 
 		for(int proc = 0; proc < totalProcesses; proc++){
+
+			//bufPerProc[proc] = (double *) malloc((order) * sizeof(double));
 
 			/* divide into smaller buffers */
 			count = 0;
 			for(int w = 0; w < nMat; w++){
 				for (int i = 0; i < order; i++){
-					for (int j = 0; j < order; j++)
-						bufPerProc[count] = buffer[((order*order)) + (i * order + j)];
-					count++;
-					if(count == amountPerProcess)
-						count = 0;
+					bufPerProc[i] = (double *) malloc((order) * sizeof(double));
+					for (int j = 0; j < order; j++){
+						bufPerProc[i][j] = buffer[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)];
+						//printf ("!!!!!! %f %f.\n", bufPerProc[i][j], buffer[((order*order)) + (i * order + j)]);
+					}
 				}
+				count++;
+				if(count == amountPerProcess)
+					break;
+					//count = 0;
 			}
 
 			/* do master work */
@@ -113,8 +120,10 @@ int main (int argc, char *argv[]){
 					/* preenche matriz atraves do buffer */
 					for (int i = 0; i < order; i++){
 						matrix[i] = (double *) malloc((order) * sizeof(double));
-						for (int j = 0; j < order; j++)
-							matrix[i][j] = bufPerProc[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)];
+						for (int j = 0; j < order; j++){
+							matrix[i][j] = bufPerProc[i][j];//[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)];
+							//printf ("!!!!!! %f.\n", bufPerProc[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)]);
+						}
 					}
 					printf ("Preenchimento\n");
 
@@ -158,7 +167,7 @@ int main (int argc, char *argv[]){
 				/* send to slaves */
 				MPI_Send(&order, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
 				MPI_Send(&amountPerProcess, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
-				MPI_Send(&bufPerProc, amountPerProcess, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(&bufPerProc, order * order, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
 				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
 				printf ("Enviou para o slave %d.\n", proc);
 			}
@@ -169,8 +178,8 @@ int main (int argc, char *argv[]){
 		/* recebe do master */
 		MPI_Recv(&order, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		bufPerProc = (double *) malloc(sizeof(double) * amountPerProcess * order * order);
-		MPI_Recv(bufPerProc, amountPerProcess, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		bufPerProc = (double **) malloc(sizeof(double) * amountPerProcess * order * order);
+		MPI_Recv(&bufPerProc, order * order, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
 		printf ("Slave %d recebeu.\n", process_id);
 
@@ -182,11 +191,15 @@ int main (int argc, char *argv[]){
 
 			matrix[x] = (double *) malloc((order) * sizeof(double));
 
+			printf ("!!!!!! %d.\n", bufPerProc);
+
 			/* preenche matriz atraves do buffer */
 			for (int i = 0; i < order; i++){
 				matrix[i] = (double *) malloc((order) * sizeof(double));
-				for (int j = 0; j < order; j++)
-					matrix[i][j] = bufPerProc[/*(((process_id+1)*x) */ ((order*order)) + (i * order + j)];
+				for (int j = 0; j < order; j++){
+					matrix[i][j] = bufPerProc[i][j]; //bufPerProc[/*(((process_id+1)*x) */ ((order*order)) + (i * order + j)];
+					printf ("!!!!!! %f.\n", bufPerProc[i][j]);
+				}
 			}
 			printf ("Preenchimento.\n");
 
