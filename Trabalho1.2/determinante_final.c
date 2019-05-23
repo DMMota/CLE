@@ -12,6 +12,9 @@
 
 #include <mpi.h>
 
+/** \brief variables to be used to calc determinant */
+double mult, deter;
+
 int main (int argc, char *argv[]){
 	char *fName = "coefData.bin";                                                         
 	
@@ -24,8 +27,6 @@ int main (int argc, char *argv[]){
 
 	MPI_Status status;
 	double *matrix;
-	double *matrixCalc;
-	double *buffer;
 	int matrix_size = 0;
 	//master node
 	if(rank == 0){
@@ -64,7 +65,7 @@ int main (int argc, char *argv[]){
 				fread(&matrix[i], sizeof(double), 1, matrix_file);
 			
 			MPI_Recv(&result, 1, MPI_DOUBLE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-			printf("result from matrix[%d] received from %d: %f\n",NodeMatrixNumber[status.MPI_SOURCE-1]+1,status.MPI_SOURCE, result);
+			printf("result from matrix %d received from %d: %.3e\n",NodeMatrixNumber[status.MPI_SOURCE-1]+1,status.MPI_SOURCE, result);
 			
 			matrixreceived++;
 			MPI_Send(0, 0, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
@@ -75,7 +76,7 @@ int main (int argc, char *argv[]){
 		}
 		while(matrixreceived < matrix_number){
 			MPI_Recv(&result, 1, MPI_DOUBLE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-			printf("result from matrix[%d] received from %d: %f\n",NodeMatrixNumber[status.MPI_SOURCE-1]+1,status.MPI_SOURCE, result);
+			printf("result from matrix %d received from %d: %.3e\n",NodeMatrixNumber[status.MPI_SOURCE-1]+1,status.MPI_SOURCE, result);
 			matrixreceived++;
 		}
 		int end_flag = 1;
@@ -94,126 +95,37 @@ int main (int argc, char *argv[]){
 			MPI_Recv(&matrix_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			matrix = (double*)malloc(sizeof(double) * (matrix_size * matrix_size));
 			MPI_Recv(matrix, matrix_size*matrix_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			double result = 1;
+			
+			double **matrix_calc = (double **) malloc(sizeof(double *) * matrix_size);
+			for (int i = 0; i < matrix_size; i++) {
+				matrix_calc[i] = (double *) malloc(sizeof(double) * matrix_size);
+				for (int j = 0; j < matrix_size; j++) {
+					matrix_calc[i][j] = matrix[matrix_size*i + j];
+				} 
+			}
+			
 			// Determinant Calculation
-	        matrixCalc = (double **) malloc((n) * sizeof(double[n]));
-			buffer = matrix;
-	        for (k = 0; k < n; ++k)
-	            matrixCalc[k] = (double *) malloc((n) * sizeof(double));
+			// eliminacao de gauss
+			for(int k = 0; k < matrix_size-1; k++) {
+				for(int i = k+1; i < matrix_size; i++) {
+					mult = matrix_calc[i][k]/matrix_calc[k][k];
+					matrix_calc[i][k] = 0;
+					for(int j = k+1; j <= matrix_size; j++)
+						matrix_calc[i][j] -= mult * matrix_calc[k][j];
+				}
+			}
+			//printf ("Gauss\n");
 
-	        for (i = 0; i < n; i++)
-	            for (j = 0; j < n; j++) {
-	                matrixCalc[i][j] = buffer[i * n + j];
-	            }
-
-
-	        result = Partition(matrix, start, end, n);
-	        int h = 0;
-	        for (h = 0; h < n; ++h)
-	            free(matrixCalc[h]);
-	        free(matrixCalc);
-	        free(buffer);
-			MPI_Send(&result, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+			// determinante
+			deter = 1;
+			for(int i = 0; i < matrix_size; i++)
+				deter *= matrix_calc[i][i];
+			
+			MPI_Send(&deter, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 		}
 	}
 	
 	printf("Node %d finalized\n", rank);
     MPI_Finalize();
     return 0;
-}
-
-double MatrixDeterminant(int nDim, double *pfMatr) {
-    double fDet = 1.;
-    double fMaxElem;
-    double fAcc;
-    int i, j, k, m;
-
-    for (k = 0; k < (nDim - 1); k++) // base row of matrix
-    {
-        // search of line with max element
-        fMaxElem = fabs(pfMatr[k * nDim + k]);
-        m = k;
-        for (i = k + 1; i < nDim; i++) {
-            if (fMaxElem < fabs(pfMatr[i * nDim + k])) {
-                fMaxElem = pfMatr[i * nDim + k];
-                m = i;
-            }
-        }
-
-        // permutation of base line (index k) and max element line(index m)
-        if (m != k) {
-            for (i = k; i < nDim; i++) {
-                fAcc = pfMatr[k * nDim + i];
-                pfMatr[k * nDim + i] = pfMatr[m * nDim + i];
-                pfMatr[m * nDim + i] = fAcc;
-            }
-            fDet *= (-1.);
-        }
-
-        if (pfMatr[k * nDim + k] == 0.) return 0.0;
-
-        // trianglulation of matrix
-        for (j = (k + 1); j < nDim; j++) // current row of matrix
-        {
-            fAcc = -pfMatr[j * nDim + k] / pfMatr[k * nDim + k];
-            for (i = k; i < nDim; i++) {
-                pfMatr[j * nDim + i] = pfMatr[j * nDim + i] + fAcc * pfMatr[k * nDim + i];
-            }
-        }
-    }
-
-    for (i = 0; i < nDim; i++) {
-        fDet *= pfMatr[i * nDim + i]; // diagonal elements multiplication
-    }
-
-    return fDet;
-}
-
-double Partition(double **a, int s, int end, int n) {
-    int i, j, j1, j2;
-    double det = 0;
-    double **m = NULL;
-
-    det = 0;                      // initialize determinant of sub-matrix
-
-    // for each column in sub-matrix
-    for (j1 = s; j1 < end; j1++) {
-        // get space for the pointer list
-        m = (double **) malloc((n - 1) * sizeof(double *));
-
-        for (i = 0; i < n - 1; i++)
-            m[i] = (double *) malloc((n - 1) * sizeof(double));
-
-        for (i = 1; i < n; i++) {
-            j2 = 0;
-
-            for (j = 0; j < n; j++) {
-                if (j == j1) continue;
-
-                m[i - 1][j2] = a[i][j];
-
-
-                j2++;
-            }
-        }
-        int dim = n - 1;
-        double fMatr[dim * dim];
-        for (i = 0; i < dim; i++) {
-            for (j = 0; j < dim; j++) {
-                fMatr[i * dim + j] = m[i][j];
-                // printf("%3.2lf    ",fMatr[i*nDim+j]);
-            }
-            //printf("\n");
-        }
-
-        det += pow(-1.0, 1.0 + j1 + 1.0) * a[0][j1] * MatrixDeterminant(dim, fMatr);
-
-        //free(fMatr);
-        for (i = 0; i < n - 1; i++) free(m[i]);
-
-        free(m);
-
-    }
-
-    return (det);
 }
