@@ -81,7 +81,7 @@ int main (int argc, char *argv[]){
 
 		amountPerProcess = nMat / totalProcesses;
 		buffer = (double *) malloc(sizeof(double) * nMat * order * order);
-		bufPerProc = (double **) malloc(sizeof(double) * amountPerProcess * order * order);
+		bufPerProc = (double **) malloc(sizeof(double) /* amountPerProcess */ * order * order);
 
 		/* fill the buffer with matrix values */
 		fread(buffer, sizeof(double), nMat * order * order, f);
@@ -96,7 +96,7 @@ int main (int argc, char *argv[]){
 				for (int i = 0; i < order; i++){
 					bufPerProc[i] = (double *) malloc((order) * sizeof(double));
 					for (int j = 0; j < order; j++)
-						bufPerProc[i][j] = buffer[(order*order) + (i * order + j)];
+						bufPerProc[i][j] = buffer[nMat + (i * order + j)];
 				}
 				count++;
 				if(count == amountPerProcess)
@@ -114,7 +114,8 @@ int main (int argc, char *argv[]){
 				/* faz calculo do determinante das matrizes */
 				for(int x = 0; x < amountPerProcess; x++){
 
-					matrix[x] = (double *) malloc((order) * sizeof(double));
+					for (int q = 0; q < order; q++)
+						matrix[q] = (double *) malloc((order) * sizeof(double));
 
 					/* preenche matriz atraves do buffer */
 					for (int i = 0; i < order; i++){
@@ -140,8 +141,10 @@ int main (int argc, char *argv[]){
 					for(int i = 0; i < order; i++)
 						deter *= matrix[i][i];
 
-					printf ("Det %.3e\n", deter);
-					//det[(MASTER+1)*x] = deter;
+					free(matrix);
+
+					//printf ("Det %.3e\n", deter);
+					det[(MASTER+1)*x] = deter;
 				}
 
 				/* sincronizacao */
@@ -152,22 +155,23 @@ int main (int argc, char *argv[]){
 				//MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, j, FROM_SLAVE, MPI_COMM_WORLD, &status);
 				//}
 
-				//closeFileAndPrintDetValues();
+				closeFileAndPrintDetValues();
 
 				/* Final time */
-				//EndTime = MPI_Wtime();
+				EndTime = MPI_Wtime();
 
 				/* Print total time */
-				//printf ("\nElapsed time = %.6f s\n", EndTime - StartTime);
+				printf ("Elapsed time = %.6f s\n", EndTime - StartTime);
+
+				free(buffer);
 
 			}else if(proc > MASTER){
 				/* send to slaves */
 				MPI_Send(&order, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
 				MPI_Send(&amountPerProcess, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
 				MPI_Send(bufPerProc[proc], order * order, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
-				//printf ("!!!!!! 1 %d.\n", bufPerProc);
 				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
-				printf ("Enviou para o worker %d.\n", proc);
+				//printf ("Enviou para o worker %d.\n", proc);
 			}
 		}
 	} else if(process_id > MASTER) { /* slave work */
@@ -176,11 +180,10 @@ int main (int argc, char *argv[]){
 		/* recebe do master */
 		MPI_Recv(&order, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		buffer = (double *) malloc(sizeof(double) * amountPerProcess * order * order);
+		buffer = (double *) malloc(sizeof(double) /* amountPerProcess */ * order * order);
 		MPI_Recv(buffer, order * order, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		//printf ("!!!!!! 2 %d.\n", buffer);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		printf ("Worker %d recebeu.\n", process_id);
+		//printf ("Worker %d recebeu.\n", process_id);
 
 		/* aloca memoria para matriz */
 		matrix = (double **) malloc((order) * sizeof(double[order]));
@@ -188,14 +191,15 @@ int main (int argc, char *argv[]){
 		/* faz calculo do determinante das matrizes */
 		for(int x = 0; x < amountPerProcess; x++){
 
-			matrix[x] = (double *) malloc((order) * sizeof(double));
+			for (int q = 0; q < order; q++)
+				matrix[q] = (double *) malloc((order) * sizeof(double));
 
 			int count = 0;
 			/* preenche matriz atraves do buffer */
 			for (int i = 0; i < order; i++){
 				matrix[i] = (double *) malloc((order) * sizeof(double));
 				for (int j = 0; j < order; j++)
-					matrix[i][j] = buffer[(order*order) + (i * order + j)];
+					matrix[i][j] = buffer[/*(order*order) */ (i * order + j)];
 			}
 			//printf ("Preenchimento %d.\n", process_id);
 
@@ -215,12 +219,15 @@ int main (int argc, char *argv[]){
 			for(int i = 0; i < order; i++)
 				deter *= matrix[i][i];
 
+			free(matrix);
+			free(buffer);
+
 			printf ("Det %.3e\n", deter);
 			//det[(process_id+1)*x] = deter;
 		}
 
 		/* sincronizacao */
-		//MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		/* send para o master */
 		//MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_SLAVE, MPI_COMM_WORLD);
@@ -265,7 +272,7 @@ void openFile (char fName[]){
  *  Operation carried out by the master
  */
 void closeFileAndPrintDetValues (void){
-	printf ("Closing and Printing Values...\n");
+	printf ("\nClosing and Printing Values...\n");
 
 	int i, n;                                                                                     /* counting variable */
 
