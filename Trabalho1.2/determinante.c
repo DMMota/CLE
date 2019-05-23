@@ -84,27 +84,26 @@ int main (int argc, char *argv[]){
 		bufPerProc = (double **) malloc(sizeof(double) * amountPerProcess * order * order);
 
 		/* fill the buffer with matrix values */
-		fread(buffer, sizeof(double), order * order, f);
+		fread(buffer, sizeof(double), nMat * order * order, f);
 
 		for(int proc = 0; proc < totalProcesses; proc++){
 
-			//bufPerProc[proc] = (double *) malloc((order) * sizeof(double));
+			bufPerProc[proc] = (double *) malloc((order) * sizeof(double));
 
 			/* divide into smaller buffers */
 			count = 0;
 			for(int w = 0; w < nMat; w++){
 				for (int i = 0; i < order; i++){
 					bufPerProc[i] = (double *) malloc((order) * sizeof(double));
-					for (int j = 0; j < order; j++){
-						bufPerProc[i][j] = buffer[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)];
-						//printf ("!!!!!! %f %f.\n", bufPerProc[i][j], buffer[((order*order)) + (i * order + j)]);
-					}
+					for (int j = 0; j < order; j++)
+						bufPerProc[i][j] = buffer[(order*order) + (i * order + j)];
 				}
 				count++;
 				if(count == amountPerProcess)
-					break;
-					//count = 0;
+					count = 0;
 			}
+
+			//printf ("!!!!!! %d.\n", bufPerProc);
 
 			/* do master work */
 			if(proc == MASTER){
@@ -120,12 +119,10 @@ int main (int argc, char *argv[]){
 					/* preenche matriz atraves do buffer */
 					for (int i = 0; i < order; i++){
 						matrix[i] = (double *) malloc((order) * sizeof(double));
-						for (int j = 0; j < order; j++){
-							matrix[i][j] = bufPerProc[i][j];//[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)];
-							//printf ("!!!!!! %f.\n", bufPerProc[/* (((MASTER+1)*x) */ ((order*order)) + (i * order + j)]);
-						}
+						for (int j = 0; j < order; j++)
+							matrix[i][j] = bufPerProc[i][j];
 					}
-					printf ("Preenchimento\n");
+					//printf ("Preenchimento\n");
 
 					/* eliminacao de gauss */
 					for(int k = 0; k < order-1; k++) {
@@ -136,7 +133,7 @@ int main (int argc, char *argv[]){
 								matrix[i][j] -= mult * matrix[k][j];
 						}
 					}
-					printf ("Gauss\n");
+					//printf ("Gauss\n");
 
 					/* determinante */
 					deter = 1;
@@ -144,7 +141,7 @@ int main (int argc, char *argv[]){
 						deter *= matrix[i][i];
 
 					printf ("Det %.3e\n", deter);
-					det[(MASTER+1)*x] = deter;
+					//det[(MASTER+1)*x] = deter;
 				}
 
 				/* sincronizacao */
@@ -167,9 +164,10 @@ int main (int argc, char *argv[]){
 				/* send to slaves */
 				MPI_Send(&order, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
 				MPI_Send(&amountPerProcess, 1, MPI_INT, proc, FROM_MASTER, MPI_COMM_WORLD);
-				MPI_Send(&bufPerProc, order * order, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
+				MPI_Send(bufPerProc[proc], order * order, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
+				//printf ("!!!!!! 1 %d.\n", bufPerProc);
 				MPI_Send(&det, amountPerProcess, MPI_DOUBLE, proc, FROM_MASTER, MPI_COMM_WORLD);
-				printf ("Enviou para o slave %d.\n", proc);
+				printf ("Enviou para o worker %d.\n", proc);
 			}
 		}
 	} else if(process_id > MASTER) { /* slave work */
@@ -178,10 +176,11 @@ int main (int argc, char *argv[]){
 		/* recebe do master */
 		MPI_Recv(&order, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
 		MPI_Recv(&amountPerProcess, 1, MPI_INT, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		bufPerProc = (double **) malloc(sizeof(double) * amountPerProcess * order * order);
-		MPI_Recv(&bufPerProc, order * order, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		buffer = (double *) malloc(sizeof(double) * amountPerProcess * order * order);
+		MPI_Recv(buffer, order * order, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
+		//printf ("!!!!!! 2 %d.\n", buffer);
 		MPI_Recv(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_MASTER, MPI_COMM_WORLD, &status);
-		printf ("Slave %d recebeu.\n", process_id);
+		printf ("Worker %d recebeu.\n", process_id);
 
 		/* aloca memoria para matriz */
 		matrix = (double **) malloc((order) * sizeof(double[order]));
@@ -191,17 +190,14 @@ int main (int argc, char *argv[]){
 
 			matrix[x] = (double *) malloc((order) * sizeof(double));
 
-			printf ("!!!!!! %d.\n", bufPerProc);
-
+			int count = 0;
 			/* preenche matriz atraves do buffer */
 			for (int i = 0; i < order; i++){
 				matrix[i] = (double *) malloc((order) * sizeof(double));
-				for (int j = 0; j < order; j++){
-					matrix[i][j] = bufPerProc[i][j]; //bufPerProc[/*(((process_id+1)*x) */ ((order*order)) + (i * order + j)];
-					printf ("!!!!!! %f.\n", bufPerProc[i][j]);
-				}
+				for (int j = 0; j < order; j++)
+					matrix[i][j] = buffer[(order*order) + (i * order + j)];
 			}
-			printf ("Preenchimento.\n");
+			//printf ("Preenchimento %d.\n", process_id);
 
 			/* eliminacao de gauss */
 			for(int k = 0; k < order-1; k++) {
@@ -212,7 +208,7 @@ int main (int argc, char *argv[]){
 						matrix[i][j] -= mult * matrix[k][j];
 				}
 			}
-			printf ("Gauss.\n");
+			//printf ("Gauss %d.\n", process_id);
 
 			/* determinante */
 			deter = 1;
@@ -220,14 +216,14 @@ int main (int argc, char *argv[]){
 				deter *= matrix[i][i];
 
 			printf ("Det %.3e\n", deter);
-			det[(process_id+1)*x] = deter;
+			//det[(process_id+1)*x] = deter;
 		}
 
 		/* sincronizacao */
-		MPI_Barrier(MPI_COMM_WORLD);
+		//MPI_Barrier(MPI_COMM_WORLD);
 
 		/* send para o master */
-		MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_SLAVE, MPI_COMM_WORLD);
+		//MPI_Send(&det, amountPerProcess, MPI_DOUBLE, MASTER, FROM_SLAVE, MPI_COMM_WORLD);
 	}
 
 	MPI_Finalize();
