@@ -50,39 +50,50 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
     cudaFree(b_d);
 }
 
- __global__ void multMatrixOnGPUMix(float *matrix){
+ __global__ void detMatrixOnGPUMix(float *matrix){
     int matrix_size, matrix_number, current_matrix;
     float mult, deter, pivot;
+
     matrix_size = blockDim.x;
     matrix_number = gridDim.y;
     current_matrix = blockIdx.y;
+
     unsigned int idxCollumn = threadIdx.x;
-    unsigned int idxCurrentMatrix = current_matrix*matrix_size*matrix_size;
-    unsigned int idxPivot = idxCurrentMatrix+idxCollumn*matrix_size+idxCollumn;
+    unsigned int idxCurrentMatrix = current_matrix * matrix_size * matrix_size;
+    unsigned int idxPivot = idxCurrentMatrix + idxCollumn * matrix_size + idxCollumn;
+
     pivot = matrix[idxPivot];
     //printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
     printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
 
-    /*for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1)*matrix_size*matrix_size; i+=matrix_size) {
-        if (current_matrix == 0)
-            printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i*matrix_size+idxCollumn);
-    }*/
+    for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
+        //if (current_matrix == 0)
+            printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i * matrix_size + idxCollumn);
+    }
+
+    if(pivot == 0){
+	//to do - switch columns
+	}
 
     /* Determinant Calculation */
     // Gauss Elimination
-    /*for(int k = 0; k < matrix_size-1; k++) {
+    for(int k = 0; k < matrix_size-1; k++) {
         for(int i = k+1; i < matrix_size; i++) {//por que k+1?
-            mult = matrix_calc[i][k]/matrix_calc[k][k];
-            matrix_calc[i][k] = 0;//esse código é necessário?
-            for(int j = k+1; j <= matrix_size; j++)//por que k+1?
-                matrix_calc[i][j] -= mult * matrix_calc[k][j];
+            //mult = matrix[i][k]/matrix[k][k];
+            matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];//esse código é necessário?
+            __syncthreads();
+
+            //for(int j = k+1; j <= matrix_size; j++){//por que k+1?
+            //    matrix[i][j] -= mult * matrix[k][j];
+		//__syncthread();
+	    //}	
         }
-    }*/
-    //printf ("Gauss\n");
+    }
+
     // determinant calculation
-    /*deter = 1;
+    deter = 1;
     for(int i = 0; i < matrix_size; i++)
-        deter += blockIdx.y;*/
+        deter += blockIdx.y;
         //deter *= matrix_calc[i][i];
 }
 
@@ -131,7 +142,7 @@ int main(int argc, char **argv)
         return 1;
     }
 	
-	fread(&matrix_number, sizeof(int), 1, matrix_file);
+    fread(&matrix_number, sizeof(int), 1, matrix_file);
     fread(&matrix_size, sizeof(int), 1, matrix_file);
     int dimension  = matrix_number * matrix_size;
 
@@ -161,7 +172,7 @@ int main(int argc, char **argv)
     printf("Matrix size: nx %d ny %d\n", nx, ny);
 
     // malloc host memory
-    hostRef = (float *)malloc(nBytes);
+    //hostRef = (float *)malloc(nBytes);
     gpuRef = (float *)malloc(nBytes);
 
     // initialize data at host side
@@ -170,7 +181,7 @@ int main(int argc, char **argv)
     double iElaps = seconds() - iStart;
     printf("Matrix initialization elapsed %f sec\n", iElaps);
 
-    memset(hostRef, 0, nBytes);
+    //memset(hostRef, 0, nBytes);
     memset(gpuRef, 0, nBytes);
 
     // add matrix at host side for result checks
@@ -180,7 +191,7 @@ int main(int argc, char **argv)
     //multMatrixOnHost(h_A, h_B, hostRef, nx, ny);
     iElaps = seconds() - iStart;
     
-	//printf("multMatrixOnHost elapsed %f sec\n", iElaps);
+    //printf("multMatrixOnHost elapsed %f sec\n", iElaps);
 
     CHECK(cudaMalloc((void **)&dev_matrix, nBytes));
 
@@ -191,14 +202,12 @@ int main(int argc, char **argv)
     dim3 block(nx,1);
 
     iStart = seconds();
-    multMatrixOnGPUMix<<<grid, block>>>(dev_matrix);
+    detMatrixOnGPUMix<<<grid, block>>>(dev_matrix);
     
     //CHECK(cudaDeviceSynchronize());
     iElaps = seconds() - iStart;
-		   
-	printf("multMatrixOnGPUMix <<<(%d,%d), (%d,%d)>>> elapsed %f sec\n", grid.x,
-	   	   grid.y,
-	   	   block.x, block.y, iElaps);
+    printf("detMatrixOnGPUMix <<<(%d,%d), (%d,%d)>>> elapsed %f sec\n", grid.x, grid.y, block.x, block.y, iElaps);
+
     // check kernel error
     CHECK(cudaGetLastError());
 
@@ -206,14 +215,14 @@ int main(int argc, char **argv)
     //CHECK(cudaMemcpy(gpuRef, dev_matrix, nBytes, cudaMemcpyDeviceToHost));
 
     // check device results
-    checkResult(hostRef, gpuRef, nxy);
+    //checkResult(hostRef, gpuRef, nxy);
 
     // free device global memory
     CHECK(cudaFree(dev_matrix));
 
     // free host memory
     free(matrix);
-    free(hostRef);
+    //free(hostRef);
     free(gpuRef);
 
     // reset device
