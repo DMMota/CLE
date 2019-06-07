@@ -50,12 +50,12 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
     cudaFree(b_d);
 }
 
- __global__ void detMatrixOnGPUMix(float *matrix){
+ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     int matrix_size, matrix_number, current_matrix;
     float mult, deter, pivot;
 
-    matrix_size = blockDim.x;
-    matrix_number = gridDim.y;
+    matrix_size = nx;
+    matrix_number = ny;
     current_matrix = blockIdx.y;
 
     unsigned int idxCollumn = threadIdx.x;
@@ -199,10 +199,10 @@ int main(int argc, char **argv)
     CHECK(cudaMemcpy(dev_matrix, matrix, nBytes, cudaMemcpyHostToDevice));
     
     dim3 grid(1,ny);
-    dim3 block(nx,1);
+    dim3 block(nx*nx,1);
 
     iStart = seconds();
-    detMatrixOnGPUMix<<<grid, block>>>(dev_matrix);
+    detMatrixOnGPUMix<<<grid, block>>>(dev_matrix, nx, ny);
     
     //CHECK(cudaDeviceSynchronize());
     iElaps = seconds() - iStart;
