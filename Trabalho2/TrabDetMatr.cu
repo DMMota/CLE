@@ -52,7 +52,7 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
 
  __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     int matrix_size, matrix_number, current_matrix;
-    float mult, deter, pivot;
+    float mult, deter, pivot, *line;
 
     matrix_size = nx;
     matrix_number = ny;
@@ -71,30 +71,37 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
             printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i * matrix_size + idxCollumn);
     }
 
+    /* Pivot Verification */
     if(pivot == 0){
-	//to do - switch columns
+
+	// Procurar novo pivot, diferente de 0
+	for(int i = idxPivot; i < matrix_size+1; i++) {
+		if(matrix[i] != 0){
+			// Guardar valores da linha num novo array. E trocar valores entre linhas
+			for(int k = idxCollumn; k < idxCollumn + matrix_size+1; k++) {
+				line[k-1] = matrix[k];
+				matrix[k] = matrix[i];
+				matrix[i] = line[k-1];
+				i++;
+			}
+		}
 	}
+	
+    }else{
+	    /* Determinant Calculation */
+	    // Gauss Elimination
+	    for(int k = 1; k < matrix_size+1; k++) {
+		for(int i = k+1; i < matrix_size; i++) {
+		    matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];
+		    __syncthreads();
+		}
+	    }
 
-    /* Determinant Calculation */
-    // Gauss Elimination
-    for(int k = 0; k < matrix_size-1; k++) {
-        for(int i = k+1; i < matrix_size; i++) {//por que k+1?
-            //mult = matrix[i][k]/matrix[k][k];
-            matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];//esse código é necessário?
-            __syncthreads();
-
-            //for(int j = k+1; j <= matrix_size; j++){//por que k+1?
-            //    matrix[i][j] -= mult * matrix[k][j];
-		//__syncthread();
-	    //}	
-        }
+	    // determinant calculation
+	    deter = 1;
+	    for(int i = 1; i < matrix_size+1; i++)
+		deter *= matrix[i*i];
     }
-
-    // determinant calculation
-    deter = 1;
-    for(int i = 0; i < matrix_size; i++)
-        deter += blockIdx.y;
-        //deter *= matrix_calc[i][i];
 }
 
 void checkResult(float *hostRef, float *gpuRef, const int N)
