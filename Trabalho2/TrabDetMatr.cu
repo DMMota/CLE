@@ -1,4 +1,4 @@
-#include "../common/common.h"
+#include "common.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
 
@@ -52,7 +52,7 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
 
  __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     int matrix_size, matrix_number, current_matrix;
-    float mult, deter, pivot, *line;
+    float deter, pivot, *line;
 
     matrix_size = nx;
     matrix_number = ny;
