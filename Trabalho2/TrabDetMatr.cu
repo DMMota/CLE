@@ -59,7 +59,9 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     matrix_number = ny;
     current_matrix = blockIdx.y;
 
-    unsigned int idxCollumn = threadIdx.x;
+    unsigned int idxCollumn = blockIdx.x;
+    unsigned int idxLine = threadIdx.x * blockDim.y;
+    unsigned int idxPosition = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int idxCurrentMatrix = current_matrix * matrix_size * matrix_size;
     unsigned int idxPivot = idxCurrentMatrix + idxCollumn * matrix_size + idxCollumn;
 
@@ -94,17 +96,15 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     }
 	    /* Determinant Calculation */
 	    // Gauss Elimination
-	    for(int k = 1; k < matrix_size; k++) {
-			for(int i = 1; i < matrix_size; i++) {
-			    matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];
-			    __syncthreads();
-			}
+	    for(int k = 0; k < idxLine; k++) {
+	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
+	           __syncthreads();
 	    }
 
 	    // Determinant Calculation
 	    deter = 1;
-	    for(int i = 1; i < matrix_size+1; i++)
-			deter *= matrix[i*i];
+	    for(int i = 0; i < matrix_size; i++)
+		    deter *= matrix[i*i];
 
 	    printf("Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
 }
