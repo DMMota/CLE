@@ -1,4 +1,5 @@
 #include "common.h"
+#include <math.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
 
@@ -66,18 +67,23 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     //printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
     printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
 
-    for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
+    //for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
         //if (current_matrix == 0)
-            printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i * matrix_size + idxCollumn);
-    }
+            //printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i * matrix_size + idxCollumn);
+    //}
 
     /* Pivot Verification */
     if(pivot == 0){
 		// Procurar novo pivot, diferente de 0
-		for(int i = idxPivot; i < matrix_size+1; i++) {
+		int i = idxPivot;
+		bool newpivot_found = false;
+                while(!newpivot_found){
+			i = i + matrix_size;
 			if(matrix[i] != 0){
+				newpivot_found = true;
+				i = floor((i-1) / matrix_size) * matrix_size + 1;
 				// Guardar valores da linha num novo array. E trocar valores entre linhas
-				for(int k = idxCollumn; k < idxCollumn + matrix_size+1; k++) {
+				for(int k = idxCollumn; k < idxCollumn + matrix_size; k++) {
 					line[k-1] = matrix[k];
 					matrix[k] = matrix[i];
 					matrix[i] = line[k-1];
@@ -85,11 +91,11 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 				}
 			}
 		}
-    }else{
+    }
 	    /* Determinant Calculation */
 	    // Gauss Elimination
-	    for(int k = 1; k < matrix_size+1; k++) {
-			for(int i = k+1; i < matrix_size; i++) {
+	    for(int k = 1; k < matrix_size; k++) {
+			for(int i = 1; i < matrix_size; i++) {
 			    matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];
 			    __syncthreads();
 			}
@@ -99,7 +105,8 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 	    deter = 1;
 	    for(int i = 1; i < matrix_size+1; i++)
 			deter *= matrix[i*i];
-    }
+
+	    printf("Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
 }
 
 void checkResult(float *hostRef, float *gpuRef, const int N)
@@ -127,18 +134,18 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
 int main(int argc, char **argv){
     char *fName;
 	
-	if (argc != 2){
-		printf("Usage: ./<ExecutableFilename> <MatrixFilename>\n");
-		printf("%6s MatrixFilename: Name the file that contains the matrices\n", "->");
-		exit(1);
-	}
+    if (argc != 2){
+        printf("Usage: ./<ExecutableFilename> <MatrixFilename>\n");
+	printf("%6s MatrixFilename: Name the file that contains the matrices\n", "->");
+	exit(1);
+    }
 	
-	fName = argv[1];
-	
-	printf("%s \nStarting...\n", argv[0]);
+    fName = argv[1];
+    
+    printf("%s \nStarting...\n", argv[0]);
 
-	int matrix_number, current_matrix, matrixreceived = 0;
-	FILE *matrix_file = fopen(fName, "rb");
+    int matrix_number, current_matrix, matrixreceived = 0;
+    FILE *matrix_file = fopen(fName, "rb");
 	
     if(matrix_file == NULL) {
         printf("Cannot open the %s file\n"
