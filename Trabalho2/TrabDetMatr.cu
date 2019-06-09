@@ -2,11 +2,11 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
- int matrix_size;
- int cluster_size;
- float *matrix, *gpuRef, *hostRef;
- float *dev_matrix;
- float dev_det;
+int matrix_size;
+int cluster_size;
+float *matrix, *gpuRef, *hostRef;
+float *dev_matrix;
+float dev_det;
  
 /* __device__ __global__ void Kernel(float *a_d , float *b_d , int size){
 
@@ -50,7 +50,7 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
     cudaFree(b_d);
 }
 
- __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
+__global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     int matrix_size, matrix_number, current_matrix;
     float deter, pivot, *line;
 
@@ -73,34 +73,32 @@ void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
 
     /* Pivot Verification */
     if(pivot == 0){
-
-	// Procurar novo pivot, diferente de 0
-	for(int i = idxPivot; i < matrix_size+1; i++) {
-		if(matrix[i] != 0){
-			// Guardar valores da linha num novo array. E trocar valores entre linhas
-			for(int k = idxCollumn; k < idxCollumn + matrix_size+1; k++) {
-				line[k-1] = matrix[k];
-				matrix[k] = matrix[i];
-				matrix[i] = line[k-1];
-				i++;
+		// Procurar novo pivot, diferente de 0
+		for(int i = idxPivot; i < matrix_size+1; i++) {
+			if(matrix[i] != 0){
+				// Guardar valores da linha num novo array. E trocar valores entre linhas
+				for(int k = idxCollumn; k < idxCollumn + matrix_size+1; k++) {
+					line[k-1] = matrix[k];
+					matrix[k] = matrix[i];
+					matrix[i] = line[k-1];
+					i++;
+				}
 			}
 		}
-	}
-	
     }else{
 	    /* Determinant Calculation */
 	    // Gauss Elimination
 	    for(int k = 1; k < matrix_size+1; k++) {
-		for(int i = k+1; i < matrix_size; i++) {
-		    matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];
-		    __syncthreads();
-		}
+			for(int i = k+1; i < matrix_size; i++) {
+			    matrix[k*(i+1)] = matrix[1*(i+1)] * matrix[k*1] - matrix[k*(i+1)] * matrix[1*1];
+			    __syncthreads();
+			}
 	    }
 
-	    // determinant calculation
+	    // Determinant Calculation
 	    deter = 1;
 	    for(int i = 1; i < matrix_size+1; i++)
-		deter *= matrix[i*i];
+			deter *= matrix[i*i];
     }
 }
 
@@ -126,8 +124,7 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
         printf("Arrays do not match.\n\n");
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv){
     char *fName;
 	
 	if (argc != 2){
@@ -138,7 +135,7 @@ int main(int argc, char **argv)
 	
 	fName = argv[1];
 	
-	printf("%s Starting...\n", argv[0]);
+	printf("%s \nStarting...\n", argv[0]);
 
 	int matrix_number, current_matrix, matrixreceived = 0;
 	FILE *matrix_file = fopen(fName, "rb");
@@ -163,6 +160,7 @@ int main(int argc, char **argv)
             //printf("%d %f\n", i, matrix[i]);
         }
     }
+    
     // set up device
     int dev = 0;
     cudaDeviceProp deviceProp;
