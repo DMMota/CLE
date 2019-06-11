@@ -8,29 +8,6 @@ int cluster_size;
 float *matrix, *gpuRef, *hostRef;
 float *dev_matrix;
 float dev_det;
- 
-/* __device__ __global__ void Kernel(float *a_d , float *b_d , int size){
-
-    int idx = threadIdx.x;
-    int idy = threadIdx.y;
-
-    //Allocating memory in the share memory of the device
-    __shared__ float temp[16][16];
-
-    //Copying the data to the shared memory
-    temp[idy][idx] = a_d[(idy * (size+1)) + idx]  ;
-    for(int i =1 ; i<size ;i++){
-        if((idy + i) < size)// NO Thread divergence here
-        {
-            float var1 =(-1)*( temp[i-1][i-1]/temp[i+idy][i-1]);
-            temp[i+idy][idx] = temp[i-1][idx] +((var1) * (temp[i+idy][idx]));
-        }
-        __syncthreads();  //Synchronizing all threads before Next iteration
-    } 
-    b_d[idy*(size+1) + idx] = temp[idy][idx];
-}
-*/
-//__device__ __global__ void Kernel(float *, float * ,int );
 
 void DeviceFunc(float *temp_h , int numvar , float *temp1_h){
     float *a_d , *b_d;
@@ -75,7 +52,7 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     //}
 
     /* Pivot Verification */
-    if(pivot == 0){
+    if((pivot > -0.00001) && (pivot < 0.00001)){
 		// Procurar novo pivot, diferente de 0
 		int i = idxPivot;
 		bool newpivot_found = false;
@@ -83,7 +60,8 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 			i = i + matrix_size;
 			if(matrix[i] != 0){
 				newpivot_found = true;
-				i = floor((i-1) / matrix_size) * matrix_size + 1;
+				double aux = (i-1) / matrix_size;
+				i = floor(aux) * matrix_size + 1;
 				// Guardar valores da linha num novo array. E trocar valores entre linhas
 				for(int k = idxCollumn; k < idxCollumn + matrix_size; k++) {
 					line[k-1] = matrix[k];
@@ -94,41 +72,25 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 			}
 		}
     }
-	    /* Determinant Calculation */
-	    // Gauss Elimination
-	    for(int k = 0; k < idxLine; k++) {
-	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
-	           __syncthreads();
-	    }
 
-	    // Determinant Calculation
+    // thread N-1 calcula determinante no final
+    if(threadIdx.x == nx-1) {
+
+	    /* Determinant Calculation */
 	    deter = 1;
 	    for(int i = 0; i < matrix_size; i++)
 		    deter *= matrix[i*i];
 
 	    printf("Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
-}
-
-void checkResult(float *hostRef, float *gpuRef, const int N)
-{
-    double epsilon = 1.0E-8;
-    bool match = 1;
-
-    for (int i = 31; i < 64; i++)
-    {
-        printf("host %f gpu %f\n", hostRef[i], gpuRef[i]);
-        if (abs(hostRef[i] - gpuRef[i]) > epsilon)
-        {
-            match = 0;
-            //printf("%d host %f gpu %f\n", i, hostRef[i], gpuRef[i]);
-            break;
-        }
-    }
-
-    if (match)
-        printf("Arrays match.\n\n");
-    else
-        printf("Arrays do not match.\n\n");
+	    
+    }// restantes threads preenchem colunas a 0
+    else {
+	    /* Gauss Elimination */
+	    for(int k = 0; k < idxLine; k++) {
+	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
+	           __syncthreads();
+	    }
+    }	    
 }
 
 int main(int argc, char **argv){
