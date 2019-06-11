@@ -40,11 +40,11 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     unsigned int idxLine = threadIdx.x * blockDim.y;
     unsigned int idxPosition = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int idxCurrentMatrix = current_matrix * matrix_size * matrix_size;
-    unsigned int idxPivot = idxCurrentMatrix + idxCollumn * matrix_size + idxCollumn;
+    unsigned int idxPivot = current_matrix + idxCollumn * matrix_size + idxCollumn;
 
     pivot = matrix[idxPivot];
-    //printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
-    printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
+    printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
+    //printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
 
     //for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
         //if (current_matrix == 0)
@@ -52,18 +52,20 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     //}
 
     /* Pivot Verification */
-    if((pivot > -0.00001) && (pivot < 0.00001)){
+    if((pivot > -0.000001) && (pivot < 0.000001)){
 		// Procurar novo pivot, diferente de 0
 		int i = idxPivot;
 		bool newpivot_found = false;
                 while(!newpivot_found){
+			printf("A procurar novo pivot.\n");
 			i = i + matrix_size;
 			if(matrix[i] != 0){
+				printf("Encontrou novo pivot.\n");
 				newpivot_found = true;
 				double aux = (i-1) / matrix_size;
 				i = floor(aux) * matrix_size + 1;
 				// Guardar valores da linha num novo array. E trocar valores entre linhas
-				for(int k = idxCollumn; k < idxCollumn + matrix_size; k++) {
+				for(int k = idxPosition; k < idxPosition + matrix_size; k++) {
 					line[k-1] = matrix[k];
 					matrix[k] = matrix[i];
 					matrix[i] = line[k-1];
@@ -74,10 +76,10 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     }
 
     // thread N-1 calcula determinante no final
-    if(threadIdx.x == nx-1) {
-
+    if(threadIdx.x == nx) {
 	    /* Determinant Calculation */
 	    deter = 1;
+	    //printf("A calcular determinante.\n");
 	    for(int i = 0; i < matrix_size; i++)
 		    deter *= matrix[i*i];
 
@@ -85,6 +87,7 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 	    
     }// restantes threads preenchem colunas a 0
     else {
+	    //printf("A aplicar eliminacao de Gauss.\n");
 	    /* Gauss Elimination */
 	    for(int k = 0; k < idxLine; k++) {
 	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
