@@ -36,14 +36,13 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     matrix_number = ny;
     current_matrix = blockIdx.y;
 
-    unsigned int idxCollumn = blockIdx.x;
-    unsigned int idxLine = threadIdx.x * blockDim.y;
+    unsigned int idxCollumn = threadIdx.x;
+    unsigned int idxLine = threadIdx.y;
     unsigned int idxPosition = threadIdx.x + blockIdx.x * blockDim.x;
-    unsigned int idxCurrentMatrix = current_matrix * matrix_size * matrix_size;
     unsigned int idxPivot = current_matrix + idxCollumn * matrix_size + idxCollumn;
 
-    pivot = matrix[idxPivot];
-    printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
+    pivot = matrix[0];
+    printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxLine, idxPivot, pivot);
     //printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
 
     //for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
@@ -51,49 +50,54 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
             //printf("%d %d %d %d\n", current_matrix, i, idxCollumn, i * matrix_size + idxCollumn);
     //}
 
-    /* Pivot Verification */
-    if((pivot > -0.000001) && (pivot < 0.000001)){
-		// Procurar novo pivot, diferente de 0
-		int i = idxPivot;
-		bool newpivot_found = false;
-                while(!newpivot_found){
-			printf("A procurar novo pivot.\n");
-			i = i + matrix_size;
-			if(matrix[i] != 0){
-				printf("Encontrou novo pivot.\n");
-				newpivot_found = true;
-				double aux = (i-1) / matrix_size;
-				i = floor(aux) * matrix_size + 1;
-				// Guardar valores da linha num novo array. E trocar valores entre linhas
-				for(int k = idxPosition; k < idxPosition + matrix_size; k++) {
-					line[k-1] = matrix[k];
-					matrix[k] = matrix[i];
-					matrix[i] = line[k-1];
-					i++;
+    if(idxCollumn < matrix_size && idxLine < matrix_size){
+	    /* Pivot Verification */
+	    if(pivot == 0.000000){
+			// Procurar novo pivot, diferente de 0
+			int i = idxPivot;
+			bool newpivot_found = false;
+		        while(!newpivot_found){
+				printf("A procurar novo pivot.\n");
+				i = i + matrix_size;
+				if(matrix[i] != 0){
+					printf("Encontrou novo pivot.\n");
+					newpivot_found = true;
+					double aux = (i-1) / matrix_size;
+					i = floor(aux) * matrix_size + 1;
+					// Guardar valores da linha num novo array. E trocar valores entre linhas
+					for(int k = idxPosition; k < idxPosition + matrix_size; k++) {
+						line[k-1] = matrix[k];
+						matrix[k] = matrix[i];
+						matrix[i] = line[k-1];
+						i++;
+					}
 				}
 			}
-		}
-    }
-
-    // thread N-1 calcula determinante no final
-    if(threadIdx.x == nx) {
-	    /* Determinant Calculation */
-	    deter = 1;
-	    //printf("A calcular determinante.\n");
-	    for(int i = 0; i < matrix_size; i++)
-		    deter *= matrix[i*i];
-
-	    printf("Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
-	    
-    }// restantes threads preenchem colunas a 0
-    else {
-	    //printf("A aplicar eliminacao de Gauss.\n");
-	    /* Gauss Elimination */
-	    for(int k = 0; k < idxLine; k++) {
-	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
-	           __syncthreads();
 	    }
-    }	    
+
+	    // thread N-1 calcula determinante no final
+	    if((threadIdx.x == nx-1) && (threadIdx.y == nx-1)) {
+		    /* Determinant Calculation */
+		    deter = 1;
+		    //printf("A calcular determinante.\n");
+		    for(int i = 0; i < matrix_size; i++)
+			    deter *= matrix[i*i];
+
+		    printf("Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
+		    
+	    }// restantes threads preenchem colunas a 0
+	    else {
+		    //printf("A aplicar eliminacao de Gauss.\n");
+		    /* Gauss Elimination */
+		//printf("%d %d\n", matrix_size - idxLine+1, matrix_size - idxCollumn+1);
+		for(int i = idxCollumn; i < matrix_size; i++) {
+		    for(int k = idxLine; k < matrix_size; k++) {
+			   	matrix[(k*matrix_size)+(i+1)] = matrix[i+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(i+1)] * matrix[0];
+		   	 }
+		}
+		    //__syncthreads();
+	    }
+	}	    
 }
 
 int main(int argc, char **argv){
@@ -176,7 +180,7 @@ int main(int argc, char **argv){
     CHECK(cudaMemcpy(dev_matrix, matrix, nBytes, cudaMemcpyHostToDevice));
     
     dim3 grid(1,ny);
-    dim3 block(nx*nx,1);
+    dim3 block(nx,nx);
 
     iStart = seconds();
     detMatrixOnGPUMix<<<grid, block>>>(dev_matrix, nx, ny);
