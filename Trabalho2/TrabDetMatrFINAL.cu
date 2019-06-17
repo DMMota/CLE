@@ -67,7 +67,7 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
 
     pivot = matrix[idxPivot];
     //printf("%d %d %d %d %f\n", current_matrix, idxCollumn, idxCurrentMatrix, idxPivot, pivot);
-    printf("CODE: idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
+    //printf("idxCurrentMatrix: %d current_matrix: %d\n", idxCurrentMatrix, current_matrix);
 
     //for (int i = idxCurrentMatrix; i < (idxCurrentMatrix+1) * matrix_size * matrix_size; i += matrix_size) {
         //if (current_matrix == 0)
@@ -98,17 +98,21 @@ __global__ void detMatrixOnGPUMix(float *matrix, int nx, int ny){
     }
 	    /* Determinant Calculation */
 	    // Gauss Elimination
-	    for(int k = 0; k < idxLine; k++) {
-	           matrix[(k*matrix_size)+(threadIdx.x+1)] = matrix[threadIdx.x+1] * matrix[k*matrix_size] - matrix[(k*matrix_size)+(threadIdx.x+1)] * matrix[0];
-	           __syncthreads();
-	    }
+ for(int k = idxCollumn+1; k < matrix_size; k++) {
+        matrix[idxCurrentMatrix+(k*matrix_size)+idxCollumn] = matrix[idxPivot] * matrix[idxCurrentMatrix+(k*matrix_size)+idxCollumn] - matrix[idxCurrentMatrix+(k*matrix_size)+idxCollumn] * matrix[idxPivot];
+        //printf("r: %d, c: %d, pivot: %d\n", (idxCurrentMatrix+(k*matrix_size)+idxCollumn), idxCollumn, idxPivot);
+        __syncthreads();
+    }
 
-	    // Determinant Calculation
-	    deter = 1;
-	    for(int i = 0; i < matrix_size; i++)
-		    deter *= matrix[i*i];
-
-	    printf("CODE - Matrix number - %d; Determinante - %d.\n", current_matrix, deter);
+    // Determinant Calculation
+    if (idxPivot == idxCurrentMatrix) {
+        deter = 1.0;
+        for(int i = 0; i < matrix_size; i++) {
+            deter *= matrix[idxCurrentMatrix+i*matrix_size+i];
+            //printf("%d %d\n", current_matrix, idxCurrentMatrix+i*matrix_size+i);
+        }
+        printf("Matrix number: %d; Determinante: %.3e\n", current_matrix, deter);
+    }
 }
 
 void checkResult(float *hostRef, float *gpuRef, const int N)
